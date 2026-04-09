@@ -53,6 +53,7 @@ export interface SwapProvider {
     tokenOut: Address;
     amount: bigint;
     sender: Address;
+    slippage?: number;
   }): Promise<SwapQuote>;
   getCalldata(quote: SwapQuote): Promise<{ to: Address; data: Hex; value: bigint }>;
 }
