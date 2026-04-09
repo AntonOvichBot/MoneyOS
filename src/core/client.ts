@@ -20,7 +20,7 @@ import type {
   SwapResult,
 } from "./types.js";
 import { getChain, defaultChain } from "./chains.js";
-import { getToken, getTokenAddress } from "./tokens.js";
+import { getToken, getTokenAddress, NATIVE_TOKEN_ADDRESS } from "./tokens.js";
 
 const ERC20_ABI = [
   {
@@ -259,23 +259,27 @@ export class MoneyOS {
 
     const calldata = await provider.getCalldata(quote);
 
-    const currentAllowance = await client.readContract({
-      address: tokenInAddress,
-      abi: ERC20_ABI,
-      functionName: "allowance",
-      args: [sender, calldata.to],
-    });
+    const isNativeIn = tokenInAddress === NATIVE_TOKEN_ADDRESS;
 
-    if (currentAllowance < amountWei) {
-      const account = privateKeyToAccount(this.config.privateKey!);
-      const { request: approveRequest } = await client.simulateContract({
+    if (!isNativeIn) {
+      const currentAllowance = await client.readContract({
         address: tokenInAddress,
         abi: ERC20_ABI,
-        functionName: "approve",
-        args: [calldata.to, amountWei],
-        account,
+        functionName: "allowance",
+        args: [sender, calldata.to],
       });
-      await walletClient.writeContract(approveRequest);
+
+      if (currentAllowance < amountWei) {
+        const account = privateKeyToAccount(this.config.privateKey!);
+        const { request: approveRequest } = await client.simulateContract({
+          address: tokenInAddress,
+          abi: ERC20_ABI,
+          functionName: "approve",
+          args: [calldata.to, amountWei],
+          account,
+        });
+        await walletClient.writeContract(approveRequest);
+      }
     }
 
     const account = privateKeyToAccount(this.config.privateKey!);
@@ -283,7 +287,7 @@ export class MoneyOS {
       account,
       to: calldata.to,
       data: calldata.data,
-      value: calldata.value,
+      value: isNativeIn ? amountWei : calldata.value,
       chain: viemChains[chainId],
     });
 

@@ -7,7 +7,20 @@ export interface Token {
   addresses: Record<number, Address>;
 }
 
+export const NATIVE_TOKEN_ADDRESS =
+  "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as Address;
+
 export const tokens: Record<string, Token> = {
+  ETH: {
+    symbol: "ETH",
+    name: "Ether",
+    decimals: 18,
+    addresses: {
+      42161: NATIVE_TOKEN_ADDRESS,
+      1: NATIVE_TOKEN_ADDRESS,
+      137: NATIVE_TOKEN_ADDRESS,
+    },
+  },
   USDC: {
     symbol: "USDC",
     name: "USD Coin",
