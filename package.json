@@ -1,0 +1,60 @@
+{
+  "name": "moneyos",
+  "version": "0.1.0",
+  "description": "The operating system for money. Programmable money primitives for developers and AI agents.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "moneyos": "dist/cli/index.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "money",
+    "payments",
+    "crypto",
+    "stablecoin",
+    "wallet",
+    "sdk",
+    "cli",
+    "agent",
+    "ai",
+    "web3"
+  ],
+  "author": "Aryze",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moneyos/moneyos"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "viem": "^2.45.1",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.1.1",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.25.1"
+  }
+}
