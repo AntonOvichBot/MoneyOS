@@ -12,7 +12,13 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrum, mainnet, polygon } from "viem/chains";
-import type { MoneyOSConfig, Balance, SendResult } from "./types.js";
+import type {
+  MoneyOSConfig,
+  Balance,
+  SendResult,
+  SwapProvider,
+  SwapResult,
+} from "./types.js";
 import { getChain, defaultChain } from "./chains.js";
 import { getToken, getTokenAddress } from "./tokens.js";
 
@@ -47,6 +53,26 @@ const ERC20_ABI = [
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "string" }],
+  },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
   },
 ] as const;
 
@@ -196,5 +222,79 @@ export class MoneyOS {
 
     const hash = await walletClient.writeContract(request);
     return { hash, from, to, amount, token: tokenInfo.symbol, chainId };
+  }
+
+  async swap(
+    tokenIn: string,
+    tokenOut: string,
+    amount: string,
+    provider: SwapProvider,
+    options?: { chainId?: number; slippage?: number },
+  ): Promise<SwapResult> {
+    const chainId = options?.chainId ?? this.config.chainId;
+    const walletClient = this.getWalletClient();
+    const client = this.getPublicClient(chainId);
+    const sender = this.address;
+
+    const tokenInAddress = getTokenAddress(tokenIn, chainId);
+    const tokenOutAddress = getTokenAddress(tokenOut, chainId);
+    if (!tokenInAddress) {
+      throw new Error(`Token ${tokenIn} not found on chain ${chainId}`);
+    }
+    if (!tokenOutAddress) {
+      throw new Error(`Token ${tokenOut} not found on chain ${chainId}`);
+    }
+
+    const tokenInInfo = getToken(tokenIn)!;
+    const amountWei = parseUnits(amount, tokenInInfo.decimals);
+
+    const quote = await provider.getQuote({
+      chainId,
+      tokenIn: tokenInAddress,
+      tokenOut: tokenOutAddress,
+      amount: amountWei,
+      sender,
+      slippage: options?.slippage,
+    });
+
+    const calldata = await provider.getCalldata(quote);
+
+    const currentAllowance = await client.readContract({
+      address: tokenInAddress,
+      abi: ERC20_ABI,
+      functionName: "allowance",
+      args: [sender, calldata.to],
+    });
+
+    if (currentAllowance < amountWei) {
+      const account = privateKeyToAccount(this.config.privateKey!);
+      const { request: approveRequest } = await client.simulateContract({
+        address: tokenInAddress,
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [calldata.to, amountWei],
+        account,
+      });
+      await walletClient.writeContract(approveRequest);
+    }
+
+    const account = privateKeyToAccount(this.config.privateKey!);
+    const hash = await walletClient.sendTransaction({
+      account,
+      to: calldata.to,
+      data: calldata.data,
+      value: calldata.value,
+      chain: viemChains[chainId],
+    });
+
+    const tokenOutInfo = getToken(tokenOut)!;
+    return {
+      hash,
+      tokenIn: tokenInInfo.symbol,
+      tokenOut: tokenOutInfo.symbol,
+      amountIn: amount,
+      amountOut: formatUnits(BigInt(quote.expectedOut), tokenOutInfo.decimals),
+      chainId,
+    };
   }
 }
