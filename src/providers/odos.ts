@@ -1,7 +1,9 @@
 import type { Address, Hex } from "viem";
 import type { SwapProvider, SwapQuote } from "../core/types.js";
+import { NATIVE_TOKEN_ADDRESS } from "../core/tokens.js";
 
 const ODOS_API = "https://api.odos.xyz";
+const ODOS_NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
 interface OdosQuoteResponse {
   pathId: string;
@@ -25,6 +27,10 @@ export class OdosProvider implements SwapProvider {
     this.apiKey = options?.apiKey;
   }
 
+  private toOdosAddress(address: Address): Address {
+    return address === NATIVE_TOKEN_ADDRESS ? ODOS_NATIVE_ADDRESS : address;
+  }
+
   async getQuote(params: {
     chainId: number;
     tokenIn: Address;
@@ -32,7 +38,7 @@ export class OdosProvider implements SwapProvider {
     amount: bigint;
     sender: Address;
     slippage?: number;
-  }): Promise<SwapQuote & { pathId: string }> {
+  }): Promise<SwapQuote & { pathId: string; sender: Address }> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -47,13 +53,13 @@ export class OdosProvider implements SwapProvider {
         chainId: params.chainId,
         inputTokens: [
           {
-            tokenAddress: params.tokenIn,
+            tokenAddress: this.toOdosAddress(params.tokenIn),
             amount: params.amount.toString(),
           },
         ],
         outputTokens: [
           {
-            tokenAddress: params.tokenOut,
+            tokenAddress: this.toOdosAddress(params.tokenOut),
             proportion: 1,
           },
         ],
@@ -79,11 +85,12 @@ export class OdosProvider implements SwapProvider {
       router: "" as Address,
       chainId: params.chainId,
       pathId: data.pathId,
+      sender: params.sender,
     };
   }
 
   async getCalldata(
-    quote: SwapQuote & { pathId: string },
+    quote: SwapQuote & { pathId: string; sender: Address },
   ): Promise<{ to: Address; data: Hex; value: bigint }> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -96,7 +103,7 @@ export class OdosProvider implements SwapProvider {
       method: "POST",
       headers,
       body: JSON.stringify({
-        userAddr: quote.tokenIn,
+        userAddr: quote.sender,
         pathId: quote.pathId,
         simulate: false,
       }),
