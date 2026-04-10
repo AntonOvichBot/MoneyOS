@@ -15,13 +15,22 @@
       "require": "./dist/index.cjs"
     }
   },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:core": "npm run build --workspace=packages/core",
+    "typecheck:core": "npm run typecheck --workspace=packages/core",
+    "lint:core": "npm run lint --workspace=packages/core",
+    "build:tool-swap": "npm run build --workspace=packages/tool-swap",
+    "typecheck:tool-swap": "npm run typecheck --workspace=packages/tool-swap",
+    "lint:tool-swap": "npm run lint --workspace=packages/tool-swap"
   },
   "keywords": [
     "money",
@@ -48,6 +57,7 @@
     "dist"
   ],
   "dependencies": {
+    "@moneyos/core": "workspace:*",
     "commander": "^13.1.0",
     "viem": "^2.45.1"
   },

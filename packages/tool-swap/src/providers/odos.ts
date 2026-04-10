@@ -1,9 +1,11 @@
 import type { Address, Hex } from "viem";
 import type { SwapProvider, SwapQuote } from "@moneyos/core";
-import { NATIVE_TOKEN_ADDRESS } from "@moneyos/core";
 
 const ODOS_API = "https://api.odos.xyz";
-const ODOS_NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
+const NATIVE_TOKEN_ADDRESS =
+  "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as Address;
+const ODOS_NATIVE_ADDRESS =
+  "0x0000000000000000000000000000000000000000" as Address;
 
 interface OdosQuoteResponse {
   pathId: string;

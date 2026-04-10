@@ -6,16 +6,28 @@ import {
   type Hex,
   type PublicClient,
   type WalletClient,
+  type Chain as ViemChain,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { getChain, getViemChain } from "./chains.js";
+import { arbitrum, mainnet, polygon } from "viem/chains";
+import { getChain } from "@moneyos/core";
 import type {
   CallRequest,
   ExecutionClient,
   ExecutionResult,
   ReadClient,
   RuntimeConfig,
-} from "./runtime.js";
+} from "@moneyos/core";
+
+const viemChainMap: Record<number, ViemChain> = {
+  42161: arbitrum,
+  1: mainnet,
+  137: polygon,
+};
+
+function getViemChain(chainId: number): ViemChain | undefined {
+  return viemChainMap[chainId];
+}
 
 // --- Read ---
 

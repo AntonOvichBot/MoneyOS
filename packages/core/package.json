@@ -1,0 +1,27 @@
+{
+  "name": "@moneyos/core",
+  "version": "0.1.0",
+  "description": "Core runtime interfaces, types, and registries for MoneyOS",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/"
+  },
+  "keywords": ["moneyos", "core", "runtime", "types"],
+  "author": "Aryze",
+  "license": "MIT",
+  "files": ["dist"],
+  "peerDependencies": {
+    "viem": "^2.0.0"
+  }
+}

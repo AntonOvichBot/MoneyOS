@@ -1,8 +1,8 @@
 import { Command } from "commander";
+import { getChain } from "@moneyos/core";
 import { MoneyOS } from "../../core/client.js";
 import { OdosProvider } from "../../providers/odos.js";
 import { loadConfig } from "../config.js";
-import { getChain } from "../../core/chains.js";
 
 export const swapCommand = new Command("swap")
   .description("Swap tokens")

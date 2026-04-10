@@ -1,6 +1,6 @@
 import type { Address, Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import type { AccessAdapter, AccessSession, SessionContext } from "./runtime.js";
+import type { AccessAdapter, AccessSession, SessionContext } from "@moneyos/core";
 
 class LocalAccessSession implements AccessSession {
   readonly kind = "local" as const;

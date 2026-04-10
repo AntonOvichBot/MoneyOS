@@ -1,0 +1,28 @@
+{
+  "name": "@moneyos/tool-swap",
+  "version": "0.1.0",
+  "description": "Swap tool for MoneyOS — token swaps with pluggable providers",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/"
+  },
+  "keywords": ["moneyos", "swap", "dex", "odos"],
+  "author": "Aryze",
+  "license": "MIT",
+  "files": ["dist"],
+  "peerDependencies": {
+    "@moneyos/core": ">=0.1.0",
+    "viem": "^2.0.0"
+  }
+}

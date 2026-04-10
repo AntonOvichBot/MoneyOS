@@ -1,22 +1,26 @@
 export { MoneyOS } from "./core/client.js";
-export { chains, defaultChain, getChain } from "./core/chains.js";
-export {
-  tokens,
-  getToken,
-  getTokenAddress,
-  NATIVE_TOKEN_ADDRESS,
-} from "./core/tokens.js";
 export { OdosProvider } from "./providers/odos.js";
 
-// Runtime
+// Runtime implementations
 export { ViemReadClient, EOAExecutor } from "./core/eoa.js";
 export { LocalAccessAdapter } from "./core/access-local.js";
 
 // Factory
 export { createMoneyOS } from "./core/factory.js";
 
-// Types — existing
+// Re-export everything from @moneyos/core for backwards compatibility
+export {
+  chains,
+  defaultChain,
+  getChain,
+  tokens,
+  getToken,
+  getTokenAddress,
+  NATIVE_TOKEN_ADDRESS,
+} from "@moneyos/core";
+
 export type {
+  // Types
   MoneyOSConfig,
   Balance,
   SendResult,
@@ -24,11 +28,8 @@ export type {
   SwapResult,
   SwapProvider,
   Chain,
-} from "./core/types.js";
-export type { Token } from "./core/tokens.js";
-
-// Types — runtime
-export type {
+  Token,
+  // Runtime
   MoneyOSRuntime,
   RuntimeConfig,
   CallRequest,
@@ -41,4 +42,4 @@ export type {
   MoneyOSAction,
   ActionContext,
   AssetRegistry,
-} from "./core/runtime.js";
+} from "@moneyos/core";

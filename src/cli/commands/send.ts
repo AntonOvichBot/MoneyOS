@@ -1,7 +1,7 @@
 import { Command } from "commander";
+import { getChain } from "@moneyos/core";
 import { MoneyOS } from "../../core/client.js";
 import { loadConfig } from "../config.js";
-import { getChain } from "../../core/chains.js";
 import type { Address } from "viem";
 
 export const sendCommand = new Command("send")
