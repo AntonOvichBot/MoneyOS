@@ -1,9 +1,8 @@
 # MoneyOS
 
 MoneyOS is an open source programmable money SDK and CLI for developers and AI
-agents. It currently covers balances, sends, swaps, runtime composition, a
-Particle-backed smart-account executor, and a KeyStore abstraction with both
-file-backed and 1Password-backed wallet storage.
+agents. The repo includes balance, send, swap, runtime-composition, keystore,
+and executor code, with the project currently centered on Arbitrum.
 
 The project is still early. Package boundaries and some APIs are still settling,
 but the repo is structured so each major surface can evolve independently.
@@ -17,7 +16,7 @@ but the repo is structured so each major surface can evolve independently.
 
 ## CLI
 
-Current commands:
+Available commands:
 
 ```bash
 moneyos init [--store file|1password]
@@ -34,8 +33,6 @@ Example:
 ```bash
 moneyos init
 moneyos balance USDC
-moneyos send 10 USDC 0x...
-moneyos swap 25 USDC RYZE
 moneyos keystore status
 ```
 
@@ -58,7 +55,7 @@ console.log(tx.hash);
 
 The runtime seam is intentionally small. `createMoneyOS` can also take injected
 `execute`, `read`, and `assets` implementations, which is how external packages
-like the Particle executor and swap tool plug in.
+plug in.
 
 ## Key storage
 
@@ -88,6 +85,25 @@ Built-in tokens:
 - RYZE
 - ETH
 - POL
+
+## Current validation status
+
+What we have verified locally on the current code:
+
+- unit tests pass
+- lint passes
+- typechecks pass
+- workspace builds pass
+- the built CLI runs
+- `moneyos keystore status` works against a local file-backed wallet
+- read-only balance checks work
+
+What still needs more hands-on validation:
+
+- send flow against a real wallet end to end
+- swap flow end to end
+- live 1Password flow with `op`
+- Particle executor against real infrastructure
 
 ## Development
 

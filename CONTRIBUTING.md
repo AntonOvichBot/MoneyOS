@@ -11,14 +11,21 @@ Thanks for taking the time to contribute.
 
 ## Development setup
 
+Start with the basic checks:
+
 ```bash
 npm install
+npm test
+npm run lint
+npm run typecheck
+```
+
+If your change touches workspace packages or build output, also run:
+
+```bash
 npm run build:core
 npm run build:tool-swap
 npm run build:executor-particle
-npm run typecheck
-npm test
-npm run lint
 npm run build
 ```
 
@@ -38,6 +45,7 @@ Please keep pull requests readable and intentional.
 - Explain why it changed
 - Mention any risks or follow-up work
 - Include the commands you ran to validate the change
+- Do not claim manual testing you did not actually perform
 
 ## Commit hygiene
 
