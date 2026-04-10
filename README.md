@@ -97,11 +97,13 @@ What we have verified locally on the current code:
 - the built CLI runs
 - `moneyos keystore status` works against a local file-backed wallet
 - read-only balance checks work
+- native ETH send works on Arbitrum
+- ERC-20 sends work on Arbitrum (`USDC` and `RYZE`)
+- swaps work on Arbitrum (`USDC -> RYZE` and `USDC -> ETH`)
+- repeated live transactions work without nonce reuse after the EOA nonce fix
 
 What still needs more hands-on validation:
 
-- send flow against a real wallet end to end
-- swap flow end to end
 - live 1Password flow with `op`
 - Particle executor against real infrastructure
 
