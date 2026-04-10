@@ -9,10 +9,6 @@ export const balanceCommand = new Command("balance")
   .argument("<token>", "Token symbol (e.g. USDC, ETH, RYZE)")
   .option("-a, --address <address>", "Address to check (defaults to your own)")
   .option("-c, --chain <chainId>", "Chain ID (default: 42161 Arbitrum)")
-  .option(
-    "--op-binary <path>",
-    "INTERNAL: path to the op CLI binary (for tests and smoke runs)",
-  )
   .action(async (token: string, options) => {
     const config = loadConfig();
     const chainId = options.chain ? parseInt(options.chain) : config.chainId;
@@ -21,9 +17,7 @@ export const balanceCommand = new Command("balance")
     let moneyos: MoneyOS;
     try {
       if (!address) {
-        const resolved = await loadCliAddress(config, {
-          opBinary: options.opBinary,
-        });
+        const resolved = await loadCliAddress(config);
         address = resolved.address;
       }
 

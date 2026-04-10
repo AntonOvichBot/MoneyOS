@@ -1,307 +1,210 @@
 # KeyStore Architecture
 
-Status: current-state document with forward-looking notes. This file describes
-what is landed in code today, then calls out the next architectural steps
-separately. It does not pretend the future design is already built.
+Status: current-state document with explicit future direction. This file keeps
+"what is landed today" separate from "what we intend to build next."
 
-## The short version
+## Short version
 
-MoneyOS already has the right high-level seam:
+The keeper architecture is already in place:
 
-- The SDK is storage-agnostic.
-- The CLI is responsible for turning "whatever backend owns the key" into a
-  signer.
-- Backends implement the `KeyStore` interface and return a viem `Account`,
-  not a raw private key API.
+- the SDK stays storage-agnostic
+- the CLI resolves "my wallet" through one shared path
+- local EOA signers use nonce management
+- read-only commands can resolve an address without building a send-capable SDK
+  signer path
 
-What is still transitional is the storage model and some naming:
+The old product model is gone:
 
-- `file` currently means "legacy plaintext private key in
-  `~/.moneyos/config.json`".
-- `1password` currently means "the private key itself is stored in 1Password
-  in a field named `private_key`".
-- The intended product model is different: encrypted local wallet as source of
-  truth, with password managers acting only as optional unlock helpers.
-- That encrypted-wallet plus unlock/session flow is not landed yet.
+- MoneyOS no longer supports storing the real wallet private key in 1Password
+- password managers are not wallet backends in the intended design
 
-## What is true today
+The target product direction is:
+
+- encrypted local wallet as the source of truth
+- password/passphrase unlock model
+- short-lived unlock/session flow
+- optional password-manager helpers that supply an unlock secret, not the
+  wallet private key itself
+
+## What is landed today
 
 ### SDK boundary
 
-`MoneyOS` itself does not know or care where a key came from.
+`MoneyOS` itself does not know or care where a signer came from.
 
 It accepts one of:
 
-- `privateKey`: legacy shortcut for a local EOA
-- `signer`: a pre-loaded viem `Account`
-- `execute`: a fully custom `ExecutionClient`
+- `privateKey`
+- `signer`
+- `execute`
 
-That means the long-term product shape is already viable: CLI and tooling can
-resolve signers from many backends without teaching the SDK about 1Password,
-Bitwarden, Ledger, KMS, or anything else.
+That boundary is the keeper. It lets the CLI or future tooling decide how to
+resolve a signer without teaching the SDK about local files, password managers,
+hardware wallets, or cloud KMS products.
 
-### Current backends
+### Current CLI wallet path
 
-#### `file`
+Today, the CLI has one supported wallet path:
 
-Current meaning: legacy plaintext local storage.
+1. `MONEYOS_PRIVATE_KEY` env override
+2. local file-backed config in `~/.moneyos/config.json`
 
-- The private key lives directly in `~/.moneyos/config.json` as
-  `privateKey`.
-- `keyStore.kind === "file"` is only a descriptor. The actual secret is still
-  the root-level `privateKey`.
-- This is a compatibility backend, not the final local-wallet design.
-
-#### `1password`
-
-Current landed meaning: the real wallet private key is stored in 1Password.
-
-- The 1Password item contains the private key in a concealed field named
-  `private_key`.
-- Local config stores only stable identifiers and cached metadata:
-  `vaultId`, `itemId`, optional `address`, optional `label`.
-- Reads happen through the `op` CLI using the stable reference
-  `op://<vaultId>/<itemId>/private_key`.
-
-This is important: the current 1Password-compatible path is not "store a
-passphrase in 1Password and unlock a separate local encrypted wallet". It
-stores the private key itself.
-
-That is landed code, but it is not the intended end-state product model.
-
-### Current CLI resolution path
-
-Normal wallet commands now resolve a signer through one shared backend-aware
-path instead of reading `config.privateKey` directly inside each command.
-
-Current precedence:
-
-1. `MONEYOS_PRIVATE_KEY` env var
-2. configured `1password` backend
-3. legacy `file` backend
-
-Commands using that path:
+That shared resolution path is used by:
 
 - `moneyos send`
 - `moneyos swap`
 - `moneyos balance` when no explicit `--address` is provided
 
-Read-only balance lookups stay read-only:
+This is the important cleanup that stays:
 
-- `moneyos balance <token> --address 0x...` does not load a signer and should
-  not trigger a 1Password prompt.
-- `moneyos balance <token>` also stays lightweight for a 1Password-compatible
-  config when `keyStore.address` is present in local config. In that case the
-  CLI uses cached address metadata and does not need `op read` just to know
-  "my address".
-- If a 1Password-compatible config is missing cached address metadata, the CLI
-  currently falls back to loading the signer from 1Password to derive the
-  address. That fallback exists for continuity with older or hand-edited
-  configs, but it is a compatibility limitation, not the desired long-term UX.
+- commands no longer each read `config.privateKey` on their own
+- signer resolution is centralized
+- the CLI can keep evolving without spreading wallet logic everywhere
+
+### Current storage reality
+
+The current local wallet path is still simple and not yet ideal:
+
+- `~/.moneyos/config.json` stores `privateKey`
+- `moneyos init` writes that file
+- `moneyos keystore status` inspects that file
+
+This is good enough as a temporary local path, but it is not the final product
+model. The final model should remove plaintext private key storage from the
+default CLI flow.
+
+### Read-only balance behavior
+
+Own-wallet balance does not need a full signer object.
+
+Current behavior:
+
+- `moneyos balance <token> --address 0x...` stays fully read-only
+- `moneyos balance <token>` resolves your address from env or local wallet
+  metadata and then performs a read-only balance query
+
+In plain English: balance checks do not need to prepare a transaction signer
+just to know which address to read.
 
 ### Nonce behavior
 
-Local EOA signers derived from:
+Any local EOA signer loaded through the shared resolver uses viem's nonce
+manager.
 
-- the legacy file path
-- the current 1Password-compatible path
-- `MONEYOS_PRIVATE_KEY`
+That means back-to-back live transactions use pending-aware nonce sequencing
+instead of accidentally reusing a stale nonce.
 
-attach viem's nonce manager so back-to-back live transactions use
-pending-aware nonce sequencing.
+## What was removed on purpose
 
-### Current commands
+The old 1Password wallet-backend model has been removed.
 
-- `moneyos init [--store file|1password]`
-- `moneyos keystore status [--live]`
-- `moneyos keystore migrate --to file|1password`
+That removed model was:
 
-Important product rule:
+- storing the real wallet private key in 1Password
+- keeping vault/item metadata in local config
+- reading the wallet key back through `op`
 
-- For an existing file-backed wallet, the move to 1Password is
-  `moneyos keystore migrate --to 1password`.
-- `moneyos init --store 1password` is the "create or reinitialize wallet"
-  path, not the migration path for an already-in-use wallet.
+Why it was removed:
 
-## What is not landed yet
+- it made the password manager the true wallet backend
+- it pushed product logic toward "wallet secret lives in 1Password"
+- that is the wrong direction for a system that wants an encrypted local wallet
+  as the source of truth
 
-The following design ideas are still future work:
+If you find old configs that still mention `keyStore.kind: "1password"`, treat
+them as unsupported legacy state. The CLI should fail clearly and tell the user
+to re-import into the supported local wallet path.
 
-- encrypted local wallet file such as `wallet.json`
-- passphrase-based unlock flow
-- session cache / TTL
-- `moneyos auth unlock`
-- `moneyos auth lock`
-- `moneyos auth status`
-- strict removal of plaintext key material from local config for the default
-  local backend
+## Target architecture
 
-Those ideas may still be the right direction, but they are not the current
-architecture and docs should not describe them as if they already exist.
+This is the clean design to steer toward next.
 
-## Long-term architecture target
+### Layer 1: encrypted local wallet
 
-This is the clean model to design toward.
+The wallet at rest should live locally in an encrypted wallet file.
 
-### Layer 1: encrypted local wallet is the source of truth
-
-The wallet at rest should live locally in an encrypted wallet file, not inside
-1Password or another password manager.
-
-That layer should own:
+This layer should own:
 
 - encrypted key material
-- wallet metadata needed to identify the account
-- migration from the legacy plaintext config format
+- wallet metadata such as address and label
+- migration from the current plaintext config
 
-### Layer 2: unlock helpers supply the passphrase or unlock secret
+### Layer 2: unlock helpers
 
-Password managers belong here, not at the wallet-storage layer.
+Unlock helpers should provide the secret needed to unlock the local encrypted
+wallet.
 
 Examples:
 
-- manual terminal prompt
+- terminal password prompt
 - environment variable for controlled automation
+- OS keychain
 - 1Password
 - Bitwarden
-- OS keychain helpers
 
-These helpers should provide the secret needed to unlock the local encrypted
-wallet. They should not become the canonical place where the wallet private key
-itself lives.
+Important rule: these helpers should not store the wallet private key as the
+canonical source of truth.
 
-### Layer 3: session cache sits above the encrypted wallet
+### Layer 3: session cache
 
-The CLI is short-lived, so an unlock/session layer is still the right target.
+The CLI is short-lived, so unlock state should live in a small session layer.
 
-That layer should own:
+This layer should own:
 
 - unlock TTL
-- lock/unlock/status commands
+- lock and unlock commands
 - avoiding repeated prompts on every command
-- deleting expired session state safely
+- safe expiry and cleanup
 
-### Layer 4: SDK stays backend-agnostic
+### Layer 4: shared signer resolver
 
-Keep `MoneyOS` and `@moneyos/core` focused on:
+The CLI should keep one shared resolver that turns "current wallet state" into
+either:
+
+- an address for read-only commands
+- a signer for write commands
+
+That resolver should remain the single place that knows about:
+
+- env overrides
+- unlocked session state
+- encrypted wallet loading
+- emergency migration fallbacks during rollout
+
+### Layer 5: SDK stays clean
+
+The SDK should continue to focus on:
 
 - `signer`
 - `execute`
 - `read`
 - `assets`
 
-Do not make the SDK know about 1Password, Bitwarden, hardware wallets, or
-cloud providers.
+Do not make the SDK know about:
 
-### Layer 5: CLI resolves the active signer through one shared path
+- 1Password
+- Bitwarden
+- Ledger
+- cloud KMS providers
 
-The CLI should own:
+## Practical guidance for future work
 
-- reading local config
-- env overrides
-- session lookup
-- unlock flow
-- prompting / unlock UX
-- migration between storage modes
+Keep:
 
-The output of that layer should be a signer-like object, not raw secret bytes
-leaking through the app.
+- shared CLI signer resolution
+- nonce-managed EOA signers
+- storage-agnostic SDK boundary
+- read-only address resolution path separate from write-time signer loading
 
-### Transitional backend abstraction still matters
+Do not reintroduce:
 
-While the product direction changes the final storage model, the current shared
-signer-resolution seam is still useful. Today it can wrap multiple landed
-sources; later it can resolve:
+- a `1password` wallet backend
+- direct command-level reads of `config.privateKey`
+- product language that treats password managers as wallet storage
 
-- unlocked session signer
-- legacy plaintext fallback during migration
-- emergency env override in CI/dev workflows
+Build next:
 
-If a backend-style abstraction remains, it should sit below the shared signer
-resolver and be honest about whether it is:
-
-- a true wallet store
-- an unlock helper
-- or a transitional compatibility path
-
-Any storage-like modules should still conform to a narrow interface such as:
-
-- `metadata()`
-- `hasKey()`
-- `loadSigner()`
-
-For hardware/KMS-style signers, `loadSigner()` can return a custom viem
-`Account` wrapper rather than a locally held private key.
-
-## Design call: does the current 1Password model need redesign?
-
-Yes, relative to the stated product direction.
-
-The current implementation is fine as a transitional bridge, but it is not the
-right long-term model if:
-
-- the encrypted local wallet is the source of truth, and
-- password managers are only unlock helpers.
-
-Plain English:
-
-- The useful thing we landed is the shared signer-resolution path.
-- The thing that should not become product doctrine is "1Password stores the
-  real wallet key".
-- That 1Password model should be treated as temporary until the encrypted local
-  wallet + unlock flow exists.
-
-So the redesign need is:
-
-1. keep the shared signer path
-2. stop hardcoding direct `config.privateKey` reads
-3. introduce encrypted local wallet + unlock/session flow
-4. demote password managers from "wallet backend" to "unlock helper"
-
-## Known architectural debt
-
-### `file` is an overloaded name
-
-Today, `file` means "legacy plaintext config storage".
-
-If MoneyOS later adds a real encrypted local wallet file, `file` becomes
-ambiguous:
-
-- plaintext file
-- encrypted file
-
-Before that future backend lands, the product should decide whether to:
-
-- keep `file` as a user-facing umbrella and add an internal sub-kind, or
-- split the user-facing names explicitly, for example `plaintext` and
-  `encrypted`
-
-Do not sleepwalk into that naming collision.
-
-### Local config is still transitional
-
-Today `config.json` mixes:
-
-- runtime config (`chainId`, `rpcUrl`)
-- backend descriptor (`keyStore`)
-- and, for the legacy local path, the actual secret (`privateKey`)
-
-That is acceptable for transition, but it should not be the end state for the
-default local backend.
-
-## Practical release guidance
-
-Before public release, keep the messaging honest:
-
-- current code includes a transitional 1Password-backed wallet path
-- the intended product model is encrypted local wallet + unlock helpers
-- shared signer resolution is in progress and partially landed
-- local encrypted wallet/session flow is not shipped yet
-- npm publish readiness is separate from GitHub hygiene
-
-Also keep live-wallet safety conservative:
-
-- do not mutate a real wallet config casually
-- back up `~/.moneyos/config.json` before any real migration or smoke test
-- do not start live 1Password testing until `op` installation and the desired
-  product flow are both clear
+- encrypted wallet file
+- passphrase unlock flow
+- session cache
+- migration from plaintext local config into the encrypted wallet model

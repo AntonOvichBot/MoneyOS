@@ -9,39 +9,41 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 /**
  * Local CLI configuration persisted at `~/.moneyos/config.json`.
  *
- * The `privateKey` field is the legacy file-backed storage shortcut. The
- * optional `keyStore` field is the forward-looking descriptor of *how* the
- * wallet is stored — either in the file itself (`kind: "file"`) or in an
- * external secret manager like 1Password (`kind: "1password"`).
- *
- * Tolerance rule: this layer does NOT enforce exclusivity between
- * `privateKey` and `keyStore`. Both may be present simultaneously, e.g.
- * during a migration. The resolution and command layers (where transitional
- * states are understood) are responsible for deciding which source wins.
+ * Current landed storage is a local file-backed private key at the CLI layer.
+ * The longer-term encrypted-wallet design is intentionally not represented in
+ * this schema yet.
  */
 export interface CLIConfig {
   chainId?: number;
   rpcUrl?: string;
-  /** Legacy file-backed private key. Kept for backward compatibility. */
+  /** Local file-backed private key used by the current landed CLI path. */
   privateKey?: Hex;
-  /**
-   * Descriptor of the active key store. Absent for legacy configs and for
-   * brand-new configs that still use the file-backed default.
-   */
+}
+
+interface RemovedOnePasswordConfigShape {
   keyStore?: {
-    kind: "file" | "1password";
-    /**
-     * Stable identifier set for the 1password kind — the only fields
-     * MoneyOS relies on for lookups. Persisted verbatim from the `op` CLI
-     * response. Absent for `kind: "file"`.
-     */
-    vaultId?: string;
-    itemId?: string;
-    /** Display cache only. Never used for lookups; safe to drop or refresh. */
-    address?: Address;
-    /** Optional human-readable label. */
-    label?: string;
+    kind?: unknown;
+    address?: unknown;
   };
+}
+
+export function hasRemovedOnePasswordConfig(config: CLIConfig): boolean {
+  return (
+    (config as CLIConfig & RemovedOnePasswordConfigShape).keyStore?.kind ===
+    "1password"
+  );
+}
+
+export function getRemovedOnePasswordCachedAddress(
+  config: CLIConfig,
+): Address | undefined {
+  const address = (config as CLIConfig & RemovedOnePasswordConfigShape)
+    .keyStore?.address;
+  return typeof address === "string" ? (address as Address) : undefined;
+}
+
+export function getRemovedOnePasswordStorageMessage(): string {
+  return "This repo no longer supports the old 1Password-backed private-key storage path. Re-import the wallet into the local file path with `moneyos init --key <privateKey>`.";
 }
 
 /**
