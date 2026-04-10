@@ -241,9 +241,10 @@ built `dist/`.
 
 ## Publishing
 
-- Package name: `moneyos` on npm (owned by @moneyos org, account: ryzelabs)
-- `@moneyos/core`, `@moneyos/tool-swap`, and `@moneyos/executor-particle` published under the @moneyos scope
-- Test before publish: `npm pack` → install tarball → verify CLI works
+- Package name: `moneyos` on npm
+- Workspace packages in this repo: `@moneyos/core`, `@moneyos/tool-swap`, `@moneyos/executor-particle`
+- Before any publish: verify registry ownership and availability of the scoped package names, replace `workspace:*` runtime dependencies with publish-safe version ranges, and confirm the packed tarballs include built artifacts
+- Test before publish: `npm pack --dry-run` → install tarball → verify CLI works
 - Bump version in both package.json and src/cli/version.ts
 
 ## Rules
