@@ -11,19 +11,25 @@ See VISION.md for architecture direction and roadmap.
 
 ```
 packages/
-├── core/                — @moneyos/core: runtime interfaces, types, registries
+├── core/                      — @moneyos/core: runtime interfaces, types, registries
 │   └── src/
-│       ├── types.ts     — shared types (MoneyOSConfig, Balance, SendResult, SwapQuote, SwapProvider, Chain)
-│       ├── runtime.ts   — runtime interfaces (ExecutionClient, ReadClient, AssetRegistry, etc.)
-│       ├── tokens.ts    — token registry (USDC, USDT, RYZE, ETH, POL)
-│       ├── chains.ts    — chain registry (Arbitrum, Ethereum, Polygon)
-│       └── index.ts     — public exports
-├── tool-swap/           — @moneyos/tool-swap: swap tool with pluggable providers
+│       ├── types.ts           — result/value types (Balance, SendResult, SwapQuote, SwapProvider, Chain)
+│       ├── runtime.ts         — runtime interfaces + MoneyOSConfig (ExecutionClient, ReadClient, AssetRegistry, etc.)
+│       ├── tokens.ts          — token registry (USDC, USDT, RYZE, ETH, POL)
+│       ├── chains.ts          — chain registry (Arbitrum, Ethereum, Polygon)
+│       └── index.ts           — public exports
+├── tool-swap/                 — @moneyos/tool-swap: swap tool with pluggable providers
 │   └── src/
-│       ├── tool.ts      — swapAction, createSwapTool
+│       ├── tool.ts            — swapAction, createSwapTool
 │       ├── providers/
-│       │   └── odos.ts  — Odos DEX provider
+│       │   └── odos.ts        — Odos DEX provider
 │       └── index.ts
+├── executor-particle/         — @moneyos/executor-particle: Particle AA smart-account executor
+│   ├── src/
+│   │   ├── executor.ts        — createParticleExecutor async factory, ParticleExecutor class
+│   │   └── index.ts
+│   └── test/
+│       └── executor.test.ts   — mocks @particle-network/aa, tests v1 locks + ExecutionClient contract
 src/
 ├── core/
 │   ├── types.ts      — re-exports from @moneyos/core
@@ -56,22 +62,109 @@ src/
 |---------|-------------|-------------|
 | `@moneyos/core` | Runtime interfaces, shared types, token/chain registries | viem (peer) |
 | `@moneyos/tool-swap` | Swap tool with pluggable providers | @moneyos/core, viem (peer) |
+| `@moneyos/executor-particle` | Particle Network smart-account executor (gasless on Arbitrum) | @moneyos/core, viem (peer); @particle-network/aa |
 | `moneyos` | SDK + CLI — composes core + implementations | @moneyos/core, viem, commander |
 
-Dependency direction: `moneyos` → `@moneyos/core` ← `@moneyos/tool-swap`
+Dependency direction (all arrows point at `@moneyos/core`):
+
+```
+moneyos ──┐
+          ├──► @moneyos/core ◄── @moneyos/tool-swap
+          │
+          └──► @moneyos/executor-particle ──► @moneyos/core
+```
+
+No vendor SDK types are exposed through `@moneyos/core`. Particle-specific
+concepts (SmartAccount, AAWrapProvider, UserOp, paymaster config) stay
+inside `@moneyos/executor-particle`.
+
+### Injecting a custom executor
+
+```ts
+import { createMoneyOS } from "moneyos";
+import { createParticleExecutor } from "@moneyos/executor-particle";
+
+const execute = await createParticleExecutor({
+  chainId: 42161,
+  projectId: "...",
+  clientKey: "...",
+  appId: "...",
+  ownerPrivateKey: "0x...",
+});
+
+const moneyos = createMoneyOS({ chainId: 42161, execute });
+await moneyos.send("USDC", "0x...", "1"); // gasless, sponsored by paymaster
+```
+
+`createParticleExecutor` is async because Particle resolves the smart-account
+address asynchronously. After the factory settles, the returned executor has
+a sync `getAddress()` that satisfies the core `ExecutionClient` contract.
+
+### Particle executor v1 locks (enforced at runtime)
+
+- Arbitrum One only (`chainId: 42161`)
+- `SIMPLE` account contract, version `2.0.0`
+- `gasMode: "gasless"` only — sponsorship failures throw, no silent fallback
+- Owner is a local private key (no social login, no Ledger)
+- No batching, no session keys, no AccountSpec in core
+
+### Smoke test: `scripts/smoke-particle.ts`
+
+End-to-end validation of the Particle executor against Arbitrum One.
+
+> ⚠️ **Arbitrum mainnet only.** The executor is hard-locked to chainId 42161;
+> there is no testnet path. The script WILL move real value unless
+> `PARTICLE_SMOKE_SKIP_SEND=1` is set.
+
+**First run — dry-run only (validates credentials + smart-account derivation,
+moves no funds):**
+
+```bash
+PARTICLE_PROJECT_ID=… \
+PARTICLE_CLIENT_KEY=… \
+PARTICLE_APP_ID=… \
+MONEYOS_PRIVATE_KEY=0x… \
+PARTICLE_SMOKE_SKIP_SEND=1 \
+  npm run smoke:particle
+```
+
+**Full run — tiny amount after dry-run passes:**
+
+```bash
+PARTICLE_PROJECT_ID=… \
+PARTICLE_CLIENT_KEY=… \
+PARTICLE_APP_ID=… \
+MONEYOS_PRIVATE_KEY=0x… \
+PARTICLE_SMOKE_TO=0x… \
+PARTICLE_SMOKE_TOKEN=ETH \
+PARTICLE_SMOKE_AMOUNT=0.00001 \
+  npm run smoke:particle
+```
+
+The smart account (not the owner EOA) must hold the token being sent. Gas is
+sponsored by Particle's paymaster — the owner EOA does not need an ETH
+balance.
+
+Exit codes:
+- `0` — success (or dry-run completed cleanly)
+- `1` — runtime failure (wrapped error + `.cause` printed)
+- `2` — missing required environment variable
 
 ## Build
 
 ```bash
 npm install
-npm run build:core       # build @moneyos/core first
-npm run build            # tsup — outputs to dist/
-npm run build:tool-swap  # build @moneyos/tool-swap
-npm run typecheck        # tsc --noEmit
-npm run test             # vitest run (35 tests)
+npm run build:core                # build @moneyos/core first
+npm run build                     # tsup — outputs to dist/
+npm run build:tool-swap           # build @moneyos/tool-swap
+npm run build:executor-particle   # build @moneyos/executor-particle
+npm run typecheck                 # tsc --noEmit
+npm run test                      # vitest run — picks up tests across all workspaces
 ```
 
-Build order matters: `@moneyos/core` must be built before root and tool-swap.
+Build order matters: `@moneyos/core` must be built before root, tool-swap,
+and executor-particle — everything downstream resolves core types from its
+built `dist/`.
 
 ## Key decisions
 
@@ -82,14 +175,15 @@ Build order matters: `@moneyos/core` must be built before root and tool-swap.
 - Arbitrum as default chain (RYZE token lives there)
 - Odos as default swap provider (uses 0x000...000 for native ETH)
 - Private key stored at ~/.moneyos/config.json with 0o600 permissions
-- EOA is the canonical identity; smart accounts are future opt-in
+- EOA is the canonical identity; smart accounts are an opt-in execution mode
 - Runtime shape: read, execute, assets, config (intentionally small)
-- Particle Network planned for gasless + social login
+- `createMoneyOS` accepts injected runtime parts (`execute`, `read`, `assets`) — external packages plug in via this seam
+- `@moneyos/executor-particle` provides gasless on Arbitrum today; social login is explicitly a separate future package (`@moneyos/access-particle`), not combined
 
 ## Publishing
 
 - Package name: `moneyos` on npm (owned by @moneyos org, account: ryzelabs)
-- `@moneyos/core` and `@moneyos/tool-swap` published under @moneyos scope
+- `@moneyos/core`, `@moneyos/tool-swap`, and `@moneyos/executor-particle` published under the @moneyos scope
 - Test before publish: `npm pack` → install tarball → verify CLI works
 - Bump version in both package.json and src/cli/version.ts
 

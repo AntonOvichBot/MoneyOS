@@ -30,7 +30,12 @@
     "lint:core": "npm run lint --workspace=packages/core",
     "build:tool-swap": "npm run build --workspace=packages/tool-swap",
     "typecheck:tool-swap": "npm run typecheck --workspace=packages/tool-swap",
-    "lint:tool-swap": "npm run lint --workspace=packages/tool-swap"
+    "lint:tool-swap": "npm run lint --workspace=packages/tool-swap",
+    "build:executor-particle": "npm run build --workspace=packages/executor-particle",
+    "typecheck:executor-particle": "npm run typecheck --workspace=packages/executor-particle",
+    "lint:executor-particle": "npm run lint --workspace=packages/executor-particle",
+    "test:executor-particle": "npm run test --workspace=packages/executor-particle",
+    "smoke:particle": "npm run build:core && npm run build:executor-particle && tsx scripts/smoke-particle.ts"
   },
   "keywords": [
     "money",
@@ -63,9 +68,11 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@moneyos/executor-particle": "workspace:*",
     "@types/node": "^22.15.3",
     "eslint": "^9.25.1",
     "tsup": "^8.4.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.58.1",
     "vitest": "^3.1.1"
