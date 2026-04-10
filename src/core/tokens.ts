@@ -18,6 +18,13 @@ export const tokens: Record<string, Token> = {
     addresses: {
       42161: NATIVE_TOKEN_ADDRESS,
       1: NATIVE_TOKEN_ADDRESS,
+    },
+  },
+  POL: {
+    symbol: "POL",
+    name: "POL",
+    decimals: 18,
+    addresses: {
       137: NATIVE_TOKEN_ADDRESS,
     },
   },

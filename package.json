@@ -2,10 +2,11 @@
   "name": "moneyos",
   "version": "0.2.1",
   "description": "The operating system for money. Programmable money primitives for developers and AI agents.",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "moneyos": "dist/cli/index.mjs"
+    "moneyos": "dist/cli/index.js"
   },
   "exports": {
     ".": {
@@ -47,14 +48,16 @@
     "dist"
   ],
   "dependencies": {
-    "viem": "^2.45.1",
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "viem": "^2.45.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^22.15.3",
+    "eslint": "^9.25.1",
     "tsup": "^8.4.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.1.1",
-    "@types/node": "^22.15.3",
-    "eslint": "^9.25.1"
+    "typescript-eslint": "^8.58.1",
+    "vitest": "^3.1.1"
   }
 }

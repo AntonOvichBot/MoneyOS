@@ -1,17 +1,9 @@
 import {
-  createPublicClient,
-  createWalletClient,
-  http,
   formatUnits,
   parseUnits,
+  encodeFunctionData,
   type Address,
-  type Chain as ViemChain,
-  type Hex,
-  type PublicClient,
-  type WalletClient,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { arbitrum, mainnet, polygon } from "viem/chains";
 import type {
   MoneyOSConfig,
   Balance,
@@ -20,7 +12,19 @@ import type {
   SwapResult,
 } from "./types.js";
 import { getChain, defaultChain } from "./chains.js";
-import { getToken, getTokenAddress, NATIVE_TOKEN_ADDRESS } from "./tokens.js";
+import {
+  getToken,
+  getTokenAddress,
+  NATIVE_TOKEN_ADDRESS,
+} from "./tokens.js";
+import { ViemReadClient, EOAExecutor } from "./eoa.js";
+import type {
+  ReadClient,
+  ExecutionClient,
+  AssetRegistry,
+  MoneyOSRuntime,
+  RuntimeConfig,
+} from "./runtime.js";
 
 const ERC20_ABI = [
   {
@@ -76,99 +80,87 @@ const ERC20_ABI = [
   },
 ] as const;
 
-const viemChains: Record<number, ViemChain> = {
-  42161: arbitrum,
-  1: mainnet,
-  137: polygon,
-};
+class DefaultAssetRegistry implements AssetRegistry {
+  readonly nativeTokenAddress = NATIVE_TOKEN_ADDRESS;
+  getToken = getToken;
+  getTokenAddress = getTokenAddress;
+  getChain = getChain;
+}
 
 export class MoneyOS {
-  private config: MoneyOSConfig;
-  private publicClients: Map<number, PublicClient> = new Map();
-  private walletClient: WalletClient | undefined;
+  private read: ReadClient;
+  private executor: ExecutionClient | undefined;
+  private assets: AssetRegistry;
+  private runtimeConfig: RuntimeConfig;
 
   constructor(config: MoneyOSConfig) {
-    this.config = {
-      ...config,
-      chainId: config.chainId ?? defaultChain.id,
+    this.runtimeConfig = {
+      defaultChainId: config.chainId ?? defaultChain.id,
+      rpcUrl: config.rpcUrl,
+    };
+
+    this.read = new ViemReadClient(this.runtimeConfig);
+    this.assets = new DefaultAssetRegistry();
+
+    if (config.privateKey) {
+      this.executor = new EOAExecutor(config.privateKey, this.runtimeConfig);
+    }
+  }
+
+  get runtime(): MoneyOSRuntime {
+    return {
+      read: this.read,
+      execute: this.requireExecutor(),
+      assets: this.assets,
+      config: this.runtimeConfig,
     };
   }
 
-  private getPublicClient(chainId?: number): PublicClient {
-    const id = chainId ?? this.config.chainId;
-    let client = this.publicClients.get(id);
-    if (!client) {
-      const chain = viemChains[id];
-      const chainInfo = getChain(id);
-      const rpcUrl =
-        id === this.config.chainId ? this.config.rpcUrl : undefined;
-
-      client = createPublicClient({
-        chain,
-        transport: http(rpcUrl ?? chainInfo?.rpcUrl),
-      });
-      this.publicClients.set(id, client);
-    }
-    return client;
-  }
-
-  private getWalletClient(): WalletClient {
-    if (!this.walletClient) {
-      if (!this.config.privateKey) {
-        throw new Error(
-          "No private key configured. Set privateKey in MoneyOS config.",
-        );
-      }
-      const account = privateKeyToAccount(this.config.privateKey);
-      const chain = viemChains[this.config.chainId];
-      const chainInfo = getChain(this.config.chainId);
-      this.walletClient = createWalletClient({
-        account,
-        chain,
-        transport: http(this.config.rpcUrl ?? chainInfo?.rpcUrl),
-      });
-    }
-    return this.walletClient;
-  }
-
   get address(): Address {
-    if (!this.config.privateKey) {
-      throw new Error("No private key configured.");
+    return this.requireExecutor().getAddress();
+  }
+
+  private requireExecutor(): ExecutionClient {
+    if (!this.executor) {
+      throw new Error(
+        "No private key configured. Set privateKey in MoneyOS config.",
+      );
     }
-    return privateKeyToAccount(this.config.privateKey).address;
+    return this.executor;
   }
 
   async balance(
     token: string,
     options?: { address?: Address; chainId?: number },
   ): Promise<Balance> {
-    const chainId = options?.chainId ?? this.config.chainId;
+    const chainId = options?.chainId ?? this.runtimeConfig.defaultChainId;
     const account = options?.address ?? this.address;
-    const client = this.getPublicClient(chainId);
 
-    if (token.toUpperCase() === "ETH") {
-      const raw = await client.getBalance({ address: account });
-      return {
-        token: "ETH",
-        symbol: "ETH",
-        amount: formatUnits(raw, 18),
-        rawAmount: raw,
-        decimals: 18,
-        chainId,
-      };
-    }
-
-    const tokenAddress = getTokenAddress(token, chainId);
+    const tokenAddress = this.assets.getTokenAddress(token, chainId);
     if (!tokenAddress) {
       throw new Error(`Token ${token} not found on chain ${chainId}`);
     }
 
-    const tokenInfo = getToken(token)!;
-    const raw = await client.readContract({
+    const tokenInfo = this.assets.getToken(token)!;
+
+    if (tokenAddress === NATIVE_TOKEN_ADDRESS) {
+      const raw = await this.read.getBalance({ address: account, chainId });
+      return {
+        token: tokenInfo.name,
+        symbol: tokenInfo.symbol,
+        amount: formatUnits(raw, tokenInfo.decimals),
+        rawAmount: raw,
+        decimals: tokenInfo.decimals,
+        chainId,
+      };
+    }
+
+    const raw = await this.read.readContract<bigint>({
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "balanceOf",
       args: [account],
+      chainId,
     });
 
     return {
@@ -187,41 +179,45 @@ export class MoneyOS {
     amount: string,
     options?: { chainId?: number },
   ): Promise<SendResult> {
-    const chainId = options?.chainId ?? this.config.chainId;
-    const walletClient = this.getWalletClient();
-    const from = this.address;
+    const execute = this.requireExecutor();
+    const chainId = options?.chainId ?? this.runtimeConfig.defaultChainId;
+    const from = execute.getAddress();
 
-    if (token.toUpperCase() === "ETH") {
-      const value = parseUnits(amount, 18);
-      const account = privateKeyToAccount(this.config.privateKey!);
-      const hash = await walletClient.sendTransaction({
-        account,
-        to,
-        value,
-        chain: viemChains[chainId],
-      });
-      return { hash, from, to, amount, token: "ETH", chainId };
-    }
-
-    const tokenAddress = getTokenAddress(token, chainId);
+    const tokenAddress = this.assets.getTokenAddress(token, chainId);
     if (!tokenAddress) {
       throw new Error(`Token ${token} not found on chain ${chainId}`);
     }
 
-    const tokenInfo = getToken(token)!;
+    const tokenInfo = this.assets.getToken(token)!;
     const value = parseUnits(amount, tokenInfo.decimals);
-    const client = this.getPublicClient(chainId);
 
-    const { request } = await client.simulateContract({
-      address: tokenAddress,
+    if (tokenAddress === NATIVE_TOKEN_ADDRESS) {
+      const result = await execute.send({ to, value, chainId });
+      return {
+        hash: result.hash,
+        from,
+        to,
+        amount,
+        token: tokenInfo.symbol,
+        chainId,
+      };
+    }
+
+    const data = encodeFunctionData({
       abi: ERC20_ABI,
       functionName: "transfer",
       args: [to, value],
-      account: privateKeyToAccount(this.config.privateKey!),
     });
 
-    const hash = await walletClient.writeContract(request);
-    return { hash, from, to, amount, token: tokenInfo.symbol, chainId };
+    const result = await execute.send({ to: tokenAddress, data, chainId });
+    return {
+      hash: result.hash,
+      from,
+      to,
+      amount,
+      token: tokenInfo.symbol,
+      chainId,
+    };
   }
 
   async swap(
@@ -231,13 +227,12 @@ export class MoneyOS {
     provider: SwapProvider,
     options?: { chainId?: number; slippage?: number },
   ): Promise<SwapResult> {
-    const chainId = options?.chainId ?? this.config.chainId;
-    const walletClient = this.getWalletClient();
-    const client = this.getPublicClient(chainId);
-    const sender = this.address;
+    const execute = this.requireExecutor();
+    const chainId = options?.chainId ?? this.runtimeConfig.defaultChainId;
+    const sender = execute.getAddress();
 
-    const tokenInAddress = getTokenAddress(tokenIn, chainId);
-    const tokenOutAddress = getTokenAddress(tokenOut, chainId);
+    const tokenInAddress = this.assets.getTokenAddress(tokenIn, chainId);
+    const tokenOutAddress = this.assets.getTokenAddress(tokenOut, chainId);
     if (!tokenInAddress) {
       throw new Error(`Token ${tokenIn} not found on chain ${chainId}`);
     }
@@ -245,7 +240,7 @@ export class MoneyOS {
       throw new Error(`Token ${tokenOut} not found on chain ${chainId}`);
     }
 
-    const tokenInInfo = getToken(tokenIn)!;
+    const tokenInInfo = this.assets.getToken(tokenIn)!;
     const amountWei = parseUnits(amount, tokenInInfo.decimals);
 
     const quote = await provider.getQuote({
@@ -262,38 +257,34 @@ export class MoneyOS {
     const isNativeIn = tokenInAddress === NATIVE_TOKEN_ADDRESS;
 
     if (!isNativeIn) {
-      const currentAllowance = await client.readContract({
+      const currentAllowance = await this.read.readContract<bigint>({
         address: tokenInAddress,
         abi: ERC20_ABI,
         functionName: "allowance",
         args: [sender, calldata.to],
+        chainId,
       });
 
       if (currentAllowance < amountWei) {
-        const account = privateKeyToAccount(this.config.privateKey!);
-        const { request: approveRequest } = await client.simulateContract({
-          address: tokenInAddress,
+        const approveData = encodeFunctionData({
           abi: ERC20_ABI,
           functionName: "approve",
           args: [calldata.to, amountWei],
-          account,
         });
-        await walletClient.writeContract(approveRequest);
+        await execute.send({ to: tokenInAddress, data: approveData, chainId });
       }
     }
 
-    const account = privateKeyToAccount(this.config.privateKey!);
-    const hash = await walletClient.sendTransaction({
-      account,
+    const result = await execute.send({
       to: calldata.to,
       data: calldata.data,
       value: isNativeIn ? amountWei : calldata.value,
-      chain: viemChains[chainId],
+      chainId,
     });
 
-    const tokenOutInfo = getToken(tokenOut)!;
+    const tokenOutInfo = this.assets.getToken(tokenOut)!;
     return {
-      hash,
+      hash: result.hash,
       tokenIn: tokenInInfo.symbol,
       tokenOut: tokenOutInfo.symbol,
       amountIn: amount,

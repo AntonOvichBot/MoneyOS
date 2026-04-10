@@ -12,12 +12,34 @@ export interface CLIConfig {
   privateKey?: Hex;
 }
 
-export function loadConfig(): CLIConfig {
+export function loadFileConfig(): CLIConfig {
   if (!existsSync(CONFIG_FILE)) {
     return {};
   }
-  const raw = readFileSync(CONFIG_FILE, "utf-8");
-  return JSON.parse(raw) as CLIConfig;
+  return JSON.parse(readFileSync(CONFIG_FILE, "utf-8")) as CLIConfig;
+}
+
+export function loadConfig(): CLIConfig {
+  const config: CLIConfig = { ...loadFileConfig() };
+
+  // Env vars override file config — standard for agents/CI
+  if (process.env.MONEYOS_PRIVATE_KEY) {
+    config.privateKey = process.env.MONEYOS_PRIVATE_KEY as Hex;
+  }
+  if (process.env.MONEYOS_RPC_URL) {
+    config.rpcUrl = process.env.MONEYOS_RPC_URL;
+  }
+  if (process.env.MONEYOS_CHAIN_ID) {
+    const parsed = Number(process.env.MONEYOS_CHAIN_ID);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(
+        `Invalid MONEYOS_CHAIN_ID: "${process.env.MONEYOS_CHAIN_ID}" — must be a positive integer`,
+      );
+    }
+    config.chainId = parsed;
+  }
+
+  return config;
 }
 
 export function saveConfig(config: CLIConfig): void {

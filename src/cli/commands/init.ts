@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { loadConfig, saveConfig, getConfigPath } from "../config.js";
+import { loadFileConfig, saveConfig, getConfigPath } from "../config.js";
 
 export const initCommand = new Command("init")
   .description("Initialize MoneyOS with a new or existing account")
@@ -8,7 +8,7 @@ export const initCommand = new Command("init")
   .option("--chain <chainId>", "Default chain ID (default: 42161 Arbitrum)")
   .option("--rpc <url>", "Custom RPC URL")
   .action(async (options) => {
-    const existing = loadConfig();
+    const existing = loadFileConfig();
 
     if (existing.privateKey && !options.key) {
       const account = privateKeyToAccount(existing.privateKey);

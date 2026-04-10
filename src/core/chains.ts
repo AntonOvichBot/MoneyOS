@@ -1,3 +1,5 @@
+import type { Chain as ViemChain } from "viem";
+import { arbitrum, mainnet, polygon } from "viem/chains";
 import type { Chain } from "./types.js";
 
 export const chains: Record<string, Chain> = {
@@ -31,4 +33,14 @@ export function getChain(idOrName: number | string): Chain | undefined {
     return Object.values(chains).find((c) => c.id === idOrName);
   }
   return chains[idOrName.toLowerCase()];
+}
+
+const viemChainMap: Record<number, ViemChain> = {
+  42161: arbitrum,
+  1: mainnet,
+  137: polygon,
+};
+
+export function getViemChain(chainId: number): ViemChain | undefined {
+  return viemChainMap[chainId];
 }
