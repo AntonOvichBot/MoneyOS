@@ -35,7 +35,8 @@
     "typecheck:executor-particle": "npm run typecheck --workspace=packages/executor-particle",
     "lint:executor-particle": "npm run lint --workspace=packages/executor-particle",
     "test:executor-particle": "npm run test --workspace=packages/executor-particle",
-    "smoke:particle": "npm run build:core && npm run build:executor-particle && tsx scripts/smoke-particle.ts"
+    "smoke:particle": "npm run build:core && npm run build:executor-particle && tsx scripts/smoke-particle.ts",
+    "smoke:1password": "npm run build:core && tsx scripts/smoke-1password.ts"
   },
   "keywords": [
     "money",

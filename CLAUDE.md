@@ -150,6 +150,65 @@ Exit codes:
 - `1` — runtime failure (wrapped error + `.cause` printed)
 - `2` — missing required environment variable
 
+### Smoke test: `scripts/smoke-1password.ts`
+
+End-to-end validation of the 1Password keystore CLI path against a real
+`op` binary and a real 1Password account.
+
+> ⚠️ **Touches your real `~/.moneyos/` directory.** The script backs up any
+> existing `~/.moneyos/config.json` to
+> `~/.moneyos/config.json.smoke-backup-<pid>` before starting and restores
+> it in a `finally` block. Do **not** kill the process mid-run — the restore
+> step will be skipped and you'll need to recover the backup manually.
+
+The script drives the composed CLI flow in a subprocess per phase so each
+command runs in a fresh commander state:
+
+1. `moneyos init --store 1password`
+2. `moneyos keystore status`           (cheap probe, no prompt)
+3. `moneyos keystore status --live`    (1Password biometric prompt)
+4. `moneyos keystore migrate --to file --yes --delete-1password-item`
+5. `moneyos keystore status`           (verify file backend)
+
+Expect at least **four biometric prompts** on your Mac: one for
+`op item create`, one for `op read` (status --live), one for `op read`
+(migrate), and one for `op item delete` (migrate cleanup).
+
+**Prerequisites:**
+
+- `op` CLI installed, resolvable on PATH (or pass `MONEYOS_SMOKE_OP_BINARY`).
+- 1Password desktop app integration enabled in Developer settings.
+- Signed into at least one 1Password account in the desktop app.
+- At least one vault where `op` can create items (default "Private" works).
+
+**Required env:**
+
+```bash
+MONEYOS_SMOKE_1PASSWORD=1 npm run smoke:1password
+```
+
+The explicit safety switch prevents accidental runs that would touch the
+real `~/.moneyos/` directory and the real 1Password account.
+
+**Optional env:**
+
+- `MONEYOS_SMOKE_OP_BINARY=<path>` — point at a specific `op` binary (useful
+  if you have multiple installed, e.g. a beta build).
+- `MONEYOS_SMOKE_SKIP_DELETE=1` — stop after `status --live`, leave the
+  1Password item in place for manual inspection. The script still prints
+  the vault/item IDs and restores the local config.
+
+**Exit codes:**
+
+- `0` — success (or `SKIP_DELETE` completed cleanly)
+- `1` — runtime failure (a phase returned non-zero or threw)
+- `2` — missing required env or prerequisite
+
+**Cleanup on failure:** the `finally` block always attempts to restore the
+backed-up config AND prints the vault/item IDs of any 1Password item the
+migrate phase didn't delete, along with the exact `op item delete` command
+to clean up manually.
+
 ## Build
 
 ```bash

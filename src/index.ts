@@ -9,6 +9,27 @@ export { LocalAccessAdapter } from "./core/access-local.js";
 export { FileKeyStore } from "./core/keystore-file.js";
 export type { FileKeyStoreOptions } from "./core/keystore-file.js";
 
+// 1Password plumbing
+export { ChildProcessOpRunner } from "./core/op-runner.js";
+export type {
+  OpRunner,
+  OpRunOptions,
+  OpRunResult,
+  ChildProcessOpRunnerOptions,
+} from "./core/op-runner.js";
+export {
+  OnePasswordKeyStore,
+  extractIds,
+  buildInitTemplate,
+  createInOnePassword,
+  readPrivateKeyHex,
+} from "./core/keystore-1password.js";
+export type {
+  OnePasswordKeyStoreOptions,
+  CreateInOnePasswordOptions,
+  CreateInOnePasswordResult,
+} from "./core/keystore-1password.js";
+
 // Factory
 export { createMoneyOS } from "./core/factory.js";
 
