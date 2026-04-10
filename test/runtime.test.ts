@@ -53,6 +53,11 @@ describe("EOAExecutor", () => {
     expect(viaFactory.getAddress()).toBe(account.address);
     expect(direct.getAddress()).toBe(viaFactory.getAddress());
   });
+
+  it("fromPrivateKey wires a nonce manager for live transaction sequencing", () => {
+    const viaFactory = EOAExecutor.fromPrivateKey(TEST_KEY, config) as any;
+    expect(viaFactory.signer?.nonceManager).toBeDefined();
+  });
 });
 
 describe("ViemReadClient", () => {

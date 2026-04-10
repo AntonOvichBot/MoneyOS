@@ -2,6 +2,7 @@ import {
   createPublicClient,
   createWalletClient,
   http,
+  nonceManager,
   type Account,
   type Address,
   type Hex,
@@ -103,9 +104,15 @@ export class EOAExecutor implements ExecutionClient {
    * Kept as a helper so the common "I have a hex key" path stays one line
    * while the constructor itself takes a viem `Account` to accommodate
    * future keystore-backed signers (hardware, KMS, MPC).
+   *
+   * Attach viem's nonce manager so back-to-back live transactions use a
+   * pending-aware nonce source instead of relying on RPC fill behavior.
    */
   static fromPrivateKey(privateKey: Hex, config: RuntimeConfig): EOAExecutor {
-    return new EOAExecutor(privateKeyToAccount(privateKey), config);
+    return new EOAExecutor(
+      privateKeyToAccount(privateKey, { nonceManager }),
+      config,
+    );
   }
 
   private getWalletClient(chainId: number): WalletClient {
