@@ -12,10 +12,6 @@ export const swapCommand = new Command("swap")
   .argument("<tokenOut>", "Token to buy (e.g. RYZE)")
   .option("-c, --chain <chainId>", "Chain ID (default: 42161 Arbitrum)")
   .option("-s, --slippage <percent>", "Slippage tolerance in percent (default: 1)")
-  .option(
-    "--op-binary <path>",
-    "INTERNAL: path to the op CLI binary (for tests and smoke runs)",
-  )
   .action(async (amount: string, tokenIn: string, tokenOut: string, options) => {
     const config = loadConfig();
 
@@ -29,7 +25,6 @@ export const swapCommand = new Command("swap")
         await buildCliMoneyOSConfig(config, {
           chainId,
           requireSigner: true,
-          opBinary: options.opBinary,
         }),
       );
     } catch (error) {

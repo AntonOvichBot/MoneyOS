@@ -5,14 +5,14 @@ import type { Account, Address } from "viem";
  *
  * A KeyStore decides *how* a signer is obtained. It does not decide how
  * transactions are sent — that remains the responsibility of
- * `ExecutionClient`. See `docs/step-7-keystore.md` for the full design.
+ * `ExecutionClient`.
  *
  * The interface is deliberately narrow:
  *   - `loadSigner()` returns a viem `Account`, not a raw private key.
  *     There is intentionally no `getPrivateKey()` method. Future
  *     hardware-, KMS-, or MPC-backed stores must fit the same shape.
- *   - `metadata()` is async because some stores (e.g. 1Password) need I/O
- *     even to answer questions about the stored key.
+ *   - `metadata()` is async because some stores may need I/O even to answer
+ *     questions about the stored key.
  *   - `hasKey()` lets callers probe the store without triggering a full
  *     `loadSigner()` (which may prompt the user for biometric auth).
  */
@@ -24,7 +24,6 @@ import type { Account, Address } from "viem";
  */
 export type KeyStoreKind =
   | "file"
-  | "1password"
   | "hardware"
   | "kms"
   | "custom";
@@ -37,7 +36,7 @@ export interface KeyStoreMetadata {
   kind: KeyStoreKind;
   /** Derived EOA address, if the store can produce it without loading the signer. */
   address?: Address;
-  /** Optional human-readable label for the key (e.g. a 1Password item title). */
+  /** Optional human-readable label for diagnostics. */
   label?: string;
 }
 

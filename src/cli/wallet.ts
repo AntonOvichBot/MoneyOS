@@ -1,14 +1,15 @@
 import type { MoneyOSConfig } from "@moneyos/core";
 import type { Account, Address, Hex } from "viem";
 import { FileKeyStore } from "../core/keystore-file.js";
-import { OnePasswordKeyStore } from "../core/keystore-1password.js";
-import { ChildProcessOpRunner } from "../core/op-runner.js";
-import type { OpRunner } from "../core/op-runner.js";
 import { privateKeyToManagedAccount } from "../core/signer.js";
 import { getConfigPath } from "./config.js";
-import type { CLIConfig } from "./config.js";
+import {
+  getRemovedOnePasswordStorageMessage,
+  hasRemovedOnePasswordConfig,
+  type CLIConfig,
+} from "./config.js";
 
-export type CliWalletBackendKind = "env" | "file" | "1password";
+export type CliWalletBackendKind = "env" | "file";
 
 export interface ResolvedCliSigner {
   kind: CliWalletBackendKind;
@@ -19,14 +20,12 @@ export interface ResolvedCliSigner {
 export interface ResolvedCliAddress {
   kind: CliWalletBackendKind;
   address: Address;
-  source: "env" | "config-cache" | "local-file" | "signer";
+  source: "env" | "local-file";
 }
 
 export interface ResolveCliSignerOptions {
   configPath?: string;
   envPrivateKey?: Hex;
-  opBinary?: string;
-  runner?: OpRunner;
 }
 
 export interface BuildCliMoneyOSConfigOptions
@@ -39,22 +38,12 @@ function resolveEnvPrivateKey(explicit?: Hex): Hex | undefined {
   return explicit ?? (process.env.MONEYOS_PRIVATE_KEY as Hex | undefined);
 }
 
-function getRunner(options: ResolveCliSignerOptions): OpRunner {
-  return (
-    options.runner ??
-    new ChildProcessOpRunner({
-      binary: options.opBinary,
-    })
-  );
-}
-
 /**
  * Resolve the signer the CLI should use for "my wallet" operations.
  *
  * Precedence is deliberate:
  * 1. `MONEYOS_PRIVATE_KEY` env var for ephemeral agent/CI usage.
- * 2. Configured transitional 1Password-compatible path.
- * 3. Legacy file-backed config.
+ * 2. Local file-backed config.
  */
 export async function loadCliSigner(
   config: CLIConfig,
@@ -70,30 +59,11 @@ export async function loadCliSigner(
     };
   }
 
-  if (config.keyStore?.kind === "1password") {
-    const { vaultId, itemId, address, label } = config.keyStore;
-    if (!vaultId || !itemId) {
-      throw new Error(
-        "Configured 1Password-compatible path is missing vaultId or itemId. Run `moneyos keystore status` or reinitialize the wallet.",
-      );
-    }
-
-    const store = new OnePasswordKeyStore({
-      runner: getRunner(options),
-      vaultId,
-      itemId,
-      address,
-      label,
-    });
-    const signer = await store.loadSigner();
-    return {
-      kind: "1password",
-      signer,
-      address: signer.address,
-    };
+  if (hasRemovedOnePasswordConfig(config)) {
+    throw new Error(getRemovedOnePasswordStorageMessage());
   }
 
-  if (config.privateKey || config.keyStore?.kind === "file") {
+  if (config.privateKey) {
     const store = new FileKeyStore({
       configPath: options.configPath ?? getConfigPath(),
     });
@@ -111,10 +81,8 @@ export async function loadCliSigner(
 /**
  * Resolve the address the CLI should use for read-only "my wallet" commands.
  *
- * This prefers cheap local metadata over signer loading so balance checks stay
- * lightweight. For 1Password-compatible configs, a cached address avoids an
- * `op read`. If the cache is missing, we fall back to signer loading for
- * compatibility with older or hand-edited configs.
+ * This prefers cheap local metadata over signer loading so read-only balance
+ * checks stay lightweight.
  */
 export async function loadCliAddress(
   config: CLIConfig,
@@ -130,31 +98,11 @@ export async function loadCliAddress(
     };
   }
 
-  if (config.keyStore?.kind === "1password") {
-    const { vaultId, itemId, address } = config.keyStore;
-    if (!vaultId || !itemId) {
-      throw new Error(
-        "Configured 1Password-compatible path is missing vaultId or itemId. Run `moneyos keystore status` or reinitialize the wallet.",
-      );
-    }
-
-    if (address) {
-      return {
-        kind: "1password",
-        address,
-        source: "config-cache",
-      };
-    }
-
-    const resolved = await loadCliSigner(config, options);
-    return {
-      kind: resolved.kind,
-      address: resolved.address,
-      source: "signer",
-    };
+  if (hasRemovedOnePasswordConfig(config)) {
+    throw new Error(getRemovedOnePasswordStorageMessage());
   }
 
-  if (config.privateKey || config.keyStore?.kind === "file") {
+  if (config.privateKey) {
     const store = new FileKeyStore({
       configPath: options.configPath ?? getConfigPath(),
     });

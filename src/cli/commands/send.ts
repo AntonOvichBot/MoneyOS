@@ -11,10 +11,6 @@ export const sendCommand = new Command("send")
   .argument("<token>", "Token symbol (e.g. USDC, ETH, RYZE)")
   .argument("<to>", "Recipient address")
   .option("-c, --chain <chainId>", "Chain ID (default: 42161 Arbitrum)")
-  .option(
-    "--op-binary <path>",
-    "INTERNAL: path to the op CLI binary (for tests and smoke runs)",
-  )
   .action(async (amount: string, token: string, to: string, options) => {
     const config = loadConfig();
 
@@ -28,7 +24,6 @@ export const sendCommand = new Command("send")
         await buildCliMoneyOSConfig(config, {
           chainId,
           requireSigner: true,
-          opBinary: options.opBinary,
         }),
       );
     } catch (error) {

@@ -19,13 +19,11 @@ but the repo is structured so each major surface can evolve independently.
 Available commands:
 
 ```bash
-moneyos init [--store file|1password]
+moneyos init [--key 0x...]
 moneyos balance <token> [--address 0x...]
 moneyos send <amount> <token> <to>
 moneyos swap <amount> <tokenIn> <tokenOut>
-moneyos keystore status [--live]
-moneyos keystore migrate --to 1password
-moneyos keystore migrate --to file
+moneyos keystore status
 ```
 
 Example:
@@ -57,29 +55,28 @@ The runtime seam is intentionally small. `createMoneyOS` can also take injected
 `execute`, `read`, and `assets` implementations, which is how external packages
 plug in.
 
-## Key storage
+## Current wallet model
 
-MoneyOS currently supports two wallet-storage modes:
+What is landed in code today:
 
-- File-backed: legacy plaintext `~/.moneyos/config.json` private-key storage
-- 1Password-backed: stores the private key itself in 1Password and keeps only
-  stable IDs plus cached metadata in local config
+- The CLI supports a local file-backed wallet stored in `~/.moneyos/config.json`
+- `MONEYOS_PRIVATE_KEY` can override the local file for ephemeral CI or agent runs
+- Normal wallet commands resolve their signer through one shared path instead of
+  each command reading `config.privateKey` directly
+- Local EOA signers use viem's nonce manager, so back-to-back live transactions
+  use pending-aware nonce sequencing
 
-That is the landed code today. The intended long-term product direction is an
-encrypted local wallet as the source of truth, with password managers acting as
-optional unlock helpers rather than the true wallet backend.
+What is not shipped yet:
 
-Normal CLI wallet commands resolve the signer through one shared path, so
-`send`, `swap`, and own-wallet `balance` no longer need to read
-`config.privateKey` directly. For ephemeral agent/CI runs,
-`MONEYOS_PRIVATE_KEY` still overrides the configured path.
+- encrypted local wallet storage
+- password/passphrase unlock flow
+- session cache / lock-unlock commands
+- password-manager unlock helpers
 
-For the current transitional 1Password-compatible path, own-wallet balance uses
-cached local address metadata when available, so it can stay read-only without
-hitting 1Password. If that cached address is missing from an older config, the
-CLI currently falls back to a 1Password read to recover the address.
+The old "wallet private key lives in 1Password" model has been removed from the
+repo. That is not the product direction for MoneyOS.
 
-The design notes for the KeyStore work live in
+The design notes for the current and target wallet architecture live in
 [`docs/keystore.md`](docs/keystore.md).
 
 ## Supported chains and tokens
@@ -109,7 +106,7 @@ What we have verified locally on the current code:
 - typechecks pass
 - workspace builds pass
 - the built CLI runs
-- `moneyos keystore status` works against a local file-backed wallet
+- `moneyos keystore status` works against a local wallet config
 - read-only balance checks work
 - native ETH send works on Arbitrum
 - ERC-20 sends work on Arbitrum (`USDC` and `RYZE`)
@@ -118,8 +115,8 @@ What we have verified locally on the current code:
 
 What still needs more hands-on validation:
 
-- live 1Password flow with `op`
 - Particle executor against real infrastructure
+- future encrypted-wallet and unlock/session flow after it exists
 
 ## Development
 
