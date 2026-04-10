@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { generatePrivateKey } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { Address, Hex } from "viem";
 import {
   MoneyOS,
@@ -20,7 +20,7 @@ const TEST_KEY = generatePrivateKey();
 
 describe("EOAExecutor", () => {
   const config = { defaultChainId: 42161 };
-  const executor = new EOAExecutor(TEST_KEY, config);
+  const executor = EOAExecutor.fromPrivateKey(TEST_KEY, config);
 
   it("implements ExecutionClient", () => {
     const client: ExecutionClient = executor;
@@ -39,6 +39,19 @@ describe("EOAExecutor", () => {
     expect(caps.sponsoredGas).toBe(false);
     expect(caps.batching).toBe(false);
     expect(caps.simulation).toBe(false);
+  });
+
+  it("fromPrivateKey matches direct Account construction", () => {
+    // Parity: fromPrivateKey(pk) must yield the same address as
+    // new EOAExecutor(privateKeyToAccount(pk)) — i.e. the factory is a
+    // pure convenience over the Account-taking constructor.
+    const account = privateKeyToAccount(TEST_KEY);
+    const direct = new EOAExecutor(account, config);
+    const viaFactory = EOAExecutor.fromPrivateKey(TEST_KEY, config);
+
+    expect(direct.getAddress()).toBe(account.address);
+    expect(viaFactory.getAddress()).toBe(account.address);
+    expect(direct.getAddress()).toBe(viaFactory.getAddress());
   });
 });
 
@@ -61,7 +74,9 @@ describe("LocalAccessAdapter", () => {
     const session = await adapter.openSession({ chainId: 42161 });
     expect(session.kind).toBe("local");
 
-    const executor = new EOAExecutor(TEST_KEY, { defaultChainId: 42161 });
+    const executor = EOAExecutor.fromPrivateKey(TEST_KEY, {
+      defaultChainId: 42161,
+    });
     expect(session.getAddress()).toBe(executor.getAddress());
   });
 });
@@ -199,7 +214,7 @@ describe("MoneyOS runtime injection", () => {
         privateKey: TEST_KEY,
         execute: executor,
       }),
-    ).toThrow(/pass either `execute` or `privateKey`/);
+    ).toThrow(/at most one of `execute`, `privateKey`, or `signer`/);
   });
 
   it("send() routes through the injected executor", async () => {
@@ -237,5 +252,61 @@ describe("MoneyOS runtime injection", () => {
     expect(call.to).toBe("0x1111111111111111111111111111111111111111");
     expect(call.value).toBeGreaterThan(0n);
     expect(result.token).toBe("ETH");
+  });
+});
+
+// --- Pre-loaded signer path ---
+
+describe("MoneyOS signer config", () => {
+  it("accepts a pre-loaded viem Account as `signer`", () => {
+    const signer = privateKeyToAccount(TEST_KEY);
+    const m = createMoneyOS({ chainId: 42161, signer });
+    expect(m.address).toBe(signer.address);
+    expect(m.runtime.execute.mode).toBe("eoa");
+  });
+
+  it("signer path and privateKey path yield the same address", () => {
+    const m1 = createMoneyOS({ chainId: 42161, privateKey: TEST_KEY });
+    const m2 = createMoneyOS({
+      chainId: 42161,
+      signer: privateKeyToAccount(TEST_KEY),
+    });
+    expect(m1.address).toBe(m2.address);
+  });
+
+  it("throws when both signer and privateKey are provided", () => {
+    const signer = privateKeyToAccount(TEST_KEY);
+    expect(() =>
+      createMoneyOS({
+        chainId: 42161,
+        privateKey: TEST_KEY,
+        signer,
+      }),
+    ).toThrow(/at most one of `execute`, `privateKey`, or `signer`/);
+  });
+
+  it("throws when both signer and execute are provided", () => {
+    const signer = privateKeyToAccount(TEST_KEY);
+    const executor = mockSmartAccountExecutor();
+    expect(() =>
+      createMoneyOS({
+        chainId: 42161,
+        signer,
+        execute: executor,
+      }),
+    ).toThrow(/at most one of `execute`, `privateKey`, or `signer`/);
+  });
+
+  it("throws when all three of signer, privateKey, and execute are provided", () => {
+    const signer = privateKeyToAccount(TEST_KEY);
+    const executor = mockSmartAccountExecutor();
+    expect(() =>
+      createMoneyOS({
+        chainId: 42161,
+        privateKey: TEST_KEY,
+        signer,
+        execute: executor,
+      }),
+    ).toThrow(/execute, privateKey, signer/);
   });
 });

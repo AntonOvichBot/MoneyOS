@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { loadConfig, loadFileConfig } from "../src/cli/config.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Address, Hex } from "viem";
+import {
+  loadConfig,
+  loadFileConfig,
+  saveConfig,
+  type CLIConfig,
+} from "../src/cli/config.js";
 
 describe("loadConfig env vars", () => {
   const envKeys = [
@@ -78,5 +87,125 @@ describe("loadConfig env vars", () => {
     expect(fileConfig.privateKey).not.toBe(
       process.env.MONEYOS_PRIVATE_KEY,
     );
+  });
+});
+
+// --- CLIConfig keyStore schema (step 5) ---
+//
+// These tests exercise the actual `loadFileConfig` / `saveConfig` round-trip
+// against a tmpdir-backed config file. They rely on the optional path
+// parameter added in step 5 so that no test touches the real
+// `~/.moneyos/config.json`.
+
+const TEST_PK: Hex =
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const TEST_ADDRESS: Address =
+  "0x1234567890123456789012345678901234567890";
+
+describe("CLIConfig keyStore schema", () => {
+  let tmpDir: string;
+  let configPath: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), "moneyos-cli-cfg-"));
+    configPath = join(tmpDir, "config.json");
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("legacy config without keyStore round-trips unchanged", () => {
+    const legacy: CLIConfig = {
+      chainId: 42161,
+      rpcUrl: "https://arb1.arbitrum.io/rpc",
+      privateKey: TEST_PK,
+    };
+    saveConfig(legacy, configPath);
+
+    const loaded = loadFileConfig(configPath);
+    expect(loaded.chainId).toBe(42161);
+    expect(loaded.rpcUrl).toBe("https://arb1.arbitrum.io/rpc");
+    expect(loaded.privateKey).toBe(TEST_PK);
+    expect(loaded.keyStore).toBeUndefined();
+  });
+
+  it("round-trips a keyStore with kind 'file'", () => {
+    const config: CLIConfig = {
+      chainId: 42161,
+      privateKey: TEST_PK,
+      keyStore: { kind: "file" },
+    };
+    saveConfig(config, configPath);
+
+    const loaded = loadFileConfig(configPath);
+    expect(loaded.keyStore?.kind).toBe("file");
+    expect(loaded.keyStore?.vaultId).toBeUndefined();
+    expect(loaded.keyStore?.itemId).toBeUndefined();
+    // privateKey is preserved — file kind is the legacy path
+    expect(loaded.privateKey).toBe(TEST_PK);
+  });
+
+  it("round-trips a keyStore with kind '1password' and stable IDs", () => {
+    const config: CLIConfig = {
+      chainId: 42161,
+      keyStore: {
+        kind: "1password",
+        vaultId: "abcd1234vaultid26char0001",
+        itemId: "efgh5678itemid26char00002",
+        address: TEST_ADDRESS,
+        label: "MoneyOS main wallet",
+      },
+    };
+    saveConfig(config, configPath);
+
+    const loaded = loadFileConfig(configPath);
+    expect(loaded.keyStore?.kind).toBe("1password");
+    expect(loaded.keyStore?.vaultId).toBe("abcd1234vaultid26char0001");
+    expect(loaded.keyStore?.itemId).toBe("efgh5678itemid26char00002");
+    expect(loaded.keyStore?.address).toBe(TEST_ADDRESS);
+    expect(loaded.keyStore?.label).toBe("MoneyOS main wallet");
+    expect(loaded.privateKey).toBeUndefined();
+  });
+
+  it("tolerates privateKey and keyStore coexisting (no schema enforcement)", () => {
+    // Transitional state during a migration: both may be present. The
+    // config schema must NOT reject this — enforcement lives at the
+    // resolution/command layer, not here.
+    const transitional: CLIConfig = {
+      chainId: 42161,
+      privateKey: TEST_PK,
+      keyStore: {
+        kind: "1password",
+        vaultId: "v1",
+        itemId: "i1",
+      },
+    };
+    saveConfig(transitional, configPath);
+
+    const loaded = loadFileConfig(configPath);
+    expect(loaded.privateKey).toBe(TEST_PK);
+    expect(loaded.keyStore?.kind).toBe("1password");
+    expect(loaded.keyStore?.vaultId).toBe("v1");
+    expect(loaded.keyStore?.itemId).toBe("i1");
+  });
+
+  it("saveConfig creates the parent directory for a custom path", () => {
+    const nestedPath = join(tmpDir, "nested", "subdir", "config.json");
+    const config: CLIConfig = {
+      chainId: 42161,
+      keyStore: { kind: "file" },
+    };
+    saveConfig(config, nestedPath);
+
+    const loaded = loadFileConfig(nestedPath);
+    expect(loaded.chainId).toBe(42161);
+    expect(loaded.keyStore?.kind).toBe("file");
+  });
+
+  it("missing file returns an empty config", () => {
+    const missingPath = join(tmpDir, "does-not-exist.json");
+    const loaded = loadFileConfig(missingPath);
+    expect(loaded).toEqual({});
   });
 });

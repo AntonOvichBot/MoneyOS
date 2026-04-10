@@ -1,4 +1,4 @@
-import type { Address, Hex } from "viem";
+import type { Account, Address, Hex } from "viem";
 import type { Chain } from "./types.js";
 import type { Token } from "./tokens.js";
 
@@ -100,26 +100,36 @@ export interface RuntimeConfig {
 /**
  * Configuration for a MoneyOS instance.
  *
- * Two construction modes:
+ * Three construction modes, mutually exclusive:
  *
- * 1. Default EOA: pass `privateKey`. A default EOAExecutor and ViemReadClient
- *    are created for you.
+ * 1. Default EOA from private key: pass `privateKey`. A default
+ *    `EOAExecutor` and `ViemReadClient` are created for you. Legacy shortcut
+ *    for the common "I have a hex key" case.
  *
- * 2. Injected runtime: pass `execute` (and optionally `read` / `assets`) to
+ * 2. Pre-loaded signer: pass `signer` — a viem `Account` resolved elsewhere
+ *    (typically from a `KeyStore`: file, 1Password, hardware, KMS, MPC). A
+ *    default `EOAExecutor` is built around it. This is the preferred path
+ *    when key loading is async, because the keystore boundary stays async
+ *    while `MoneyOS` construction remains synchronous.
+ *
+ * 3. Injected runtime: pass `execute` (and optionally `read` / `assets`) to
  *    plug in custom implementations — e.g. a gasless smart-account executor
  *    or a custom read client. Any part you do not inject falls back to the
  *    default.
  *
- * `privateKey` and `execute` are mutually exclusive — passing both throws.
+ * `privateKey`, `signer`, and `execute` are mutually exclusive — passing
+ * more than one throws.
  */
 export interface MoneyOSConfig {
   /** Default chain ID (e.g. 42161 for Arbitrum). */
   chainId: number;
   /** RPC URL override. Uses public RPC if not set. */
   rpcUrl?: string;
-  /** Private key for signing transactions (hex string). Creates a default EOAExecutor. Mutually exclusive with `execute`. */
+  /** Private key for signing transactions (hex string). Creates a default EOAExecutor. Mutually exclusive with `signer` and `execute`. */
   privateKey?: Hex;
-  /** Inject a custom ExecutionClient (e.g. a gasless smart-account executor). Mutually exclusive with `privateKey`. */
+  /** Pre-loaded viem `Account`, typically resolved from a `KeyStore`. Creates a default EOAExecutor. Mutually exclusive with `privateKey` and `execute`. */
+  signer?: Account;
+  /** Inject a custom ExecutionClient (e.g. a gasless smart-account executor). Mutually exclusive with `privateKey` and `signer`. */
   execute?: ExecutionClient;
   /** Inject a custom ReadClient. Defaults to ViemReadClient. */
   read?: ReadClient;

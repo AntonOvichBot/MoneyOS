@@ -5,6 +5,10 @@ export { OdosProvider } from "./providers/odos.js";
 export { ViemReadClient, EOAExecutor } from "./core/eoa.js";
 export { LocalAccessAdapter } from "./core/access-local.js";
 
+// KeyStores
+export { FileKeyStore } from "./core/keystore-file.js";
+export type { FileKeyStoreOptions } from "./core/keystore-file.js";
+
 // Factory
 export { createMoneyOS } from "./core/factory.js";
 
@@ -42,4 +46,8 @@ export type {
   MoneyOSAction,
   ActionContext,
   AssetRegistry,
+  // KeyStore
+  KeyStore,
+  KeyStoreKind,
+  KeyStoreMetadata,
 } from "@moneyos/core";

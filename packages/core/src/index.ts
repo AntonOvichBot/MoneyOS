@@ -36,3 +36,10 @@ export type {
   MoneyOSRuntime,
   RuntimeConfig,
 } from "./runtime.js";
+
+// KeyStore
+export type {
+  KeyStore,
+  KeyStoreKind,
+  KeyStoreMetadata,
+} from "./keystore.js";

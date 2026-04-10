@@ -74,9 +74,16 @@ export class MoneyOS {
   private runtimeConfig: RuntimeConfig;
 
   constructor(config: MoneyOSConfig) {
-    if (config.execute && config.privateKey) {
+    // Mutual exclusion: at most one of `execute`, `privateKey`, `signer`.
+    // These represent three different ways to produce a signing identity;
+    // combining them would be ambiguous.
+    const provided: string[] = [];
+    if (config.execute) provided.push("execute");
+    if (config.privateKey) provided.push("privateKey");
+    if (config.signer) provided.push("signer");
+    if (provided.length > 1) {
       throw new Error(
-        "MoneyOSConfig: pass either `execute` or `privateKey`, not both. `execute` overrides the default EOA path.",
+        `MoneyOSConfig: pass at most one of \`execute\`, \`privateKey\`, or \`signer\`. Received: ${provided.join(", ")}.`,
       );
     }
 
@@ -90,8 +97,13 @@ export class MoneyOS {
 
     if (config.execute) {
       this.executor = config.execute;
+    } else if (config.signer) {
+      this.executor = new EOAExecutor(config.signer, this.runtimeConfig);
     } else if (config.privateKey) {
-      this.executor = new EOAExecutor(config.privateKey, this.runtimeConfig);
+      this.executor = EOAExecutor.fromPrivateKey(
+        config.privateKey,
+        this.runtimeConfig,
+      );
     }
   }
 

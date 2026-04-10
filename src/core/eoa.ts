@@ -2,6 +2,7 @@ import {
   createPublicClient,
   createWalletClient,
   http,
+  type Account,
   type Address,
   type Hex,
   type PublicClient,
@@ -87,20 +88,29 @@ export class ViemReadClient implements ReadClient {
 
 export class EOAExecutor implements ExecutionClient {
   readonly mode = "eoa" as const;
-  private privateKey: Hex;
+  private signer: Account;
   private walletClients: Map<number, WalletClient> = new Map();
   private config: RuntimeConfig;
-  private cachedAddress: Address | undefined;
 
-  constructor(privateKey: Hex, config: RuntimeConfig) {
-    this.privateKey = privateKey;
+  constructor(signer: Account, config: RuntimeConfig) {
+    this.signer = signer;
     this.config = config;
+  }
+
+  /**
+   * Convenience factory: build an EOAExecutor from a raw private key.
+   * Equivalent to `new EOAExecutor(privateKeyToAccount(privateKey), config)`.
+   * Kept as a helper so the common "I have a hex key" path stays one line
+   * while the constructor itself takes a viem `Account` to accommodate
+   * future keystore-backed signers (hardware, KMS, MPC).
+   */
+  static fromPrivateKey(privateKey: Hex, config: RuntimeConfig): EOAExecutor {
+    return new EOAExecutor(privateKeyToAccount(privateKey), config);
   }
 
   private getWalletClient(chainId: number): WalletClient {
     let client = this.walletClients.get(chainId);
     if (!client) {
-      const account = privateKeyToAccount(this.privateKey);
       const chain = getViemChain(chainId);
       const chainInfo = getChain(chainId);
       const rpcUrl =
@@ -109,7 +119,7 @@ export class EOAExecutor implements ExecutionClient {
           : undefined;
 
       client = createWalletClient({
-        account,
+        account: this.signer,
         chain,
         transport: http(rpcUrl ?? chainInfo?.rpcUrl),
       });
@@ -119,10 +129,7 @@ export class EOAExecutor implements ExecutionClient {
   }
 
   getAddress(): Address {
-    if (!this.cachedAddress) {
-      this.cachedAddress = privateKeyToAccount(this.privateKey).address;
-    }
-    return this.cachedAddress;
+    return this.signer.address;
   }
 
   async send(call: CallRequest): Promise<ExecutionResult> {
