@@ -123,7 +123,7 @@ export class MoneyOS {
   private requireExecutor(): ExecutionClient {
     if (!this.executor) {
       throw new Error(
-        "No private key configured. Set privateKey in MoneyOS config.",
+        "No signing account configured. Set `signer`, `privateKey`, or `execute` in MoneyOS config.",
       );
     }
     return this.executor;

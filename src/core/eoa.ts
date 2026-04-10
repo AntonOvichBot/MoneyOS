@@ -2,7 +2,6 @@ import {
   createPublicClient,
   createWalletClient,
   http,
-  nonceManager,
   type Account,
   type Address,
   type Hex,
@@ -10,7 +9,6 @@ import {
   type WalletClient,
   type Chain as ViemChain,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { arbitrum, mainnet, polygon } from "viem/chains";
 import { getChain } from "@moneyos/core";
 import type {
@@ -20,6 +18,7 @@ import type {
   ReadClient,
   RuntimeConfig,
 } from "@moneyos/core";
+import { privateKeyToManagedAccount } from "./signer.js";
 
 const viemChainMap: Record<number, ViemChain> = {
   42161: arbitrum,
@@ -109,10 +108,7 @@ export class EOAExecutor implements ExecutionClient {
    * pending-aware nonce source instead of relying on RPC fill behavior.
    */
   static fromPrivateKey(privateKey: Hex, config: RuntimeConfig): EOAExecutor {
-    return new EOAExecutor(
-      privateKeyToAccount(privateKey, { nonceManager }),
-      config,
-    );
+    return new EOAExecutor(privateKeyToManagedAccount(privateKey), config);
   }
 
   private getWalletClient(chainId: number): WalletClient {

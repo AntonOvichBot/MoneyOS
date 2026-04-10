@@ -80,7 +80,9 @@ describe("validateMigrationPreconditions (--to 1password)", () => {
     const result = validateMigrationPreconditions(status, "1password");
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toMatch(/already using the 1Password backend/);
+      expect(result.reason).toMatch(
+        /already using the current 1Password-compatible path/,
+      );
     }
   });
 
@@ -97,7 +99,9 @@ describe("validateMigrationPreconditions (--to 1password)", () => {
     const result = validateMigrationPreconditions(status, "1password");
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toMatch(/already using the 1Password backend/);
+      expect(result.reason).toMatch(
+        /already using the current 1Password-compatible path/,
+      );
     }
   });
 
@@ -134,7 +138,7 @@ describe("validateMigrationPreconditions (--to file)", () => {
     const result = validateMigrationPreconditions(fileReady(), "file");
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toMatch(/already using the file backend/);
+      expect(result.reason).toMatch(/already using the file path/);
     }
   });
 
@@ -149,7 +153,7 @@ describe("validateMigrationPreconditions (--to file)", () => {
     const result = validateMigrationPreconditions(status, "file");
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toMatch(/already using the file backend/);
+      expect(result.reason).toMatch(/already using the file path/);
     }
   });
 
@@ -164,7 +168,7 @@ describe("validateMigrationPreconditions (--to file)", () => {
     const result = validateMigrationPreconditions(status, "file");
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.reason).toMatch(/source 1Password config is invalid/);
+      expect(result.reason).toMatch(/source 1Password-compatible config is invalid/);
       expect(result.reason).toMatch(/missing vaultId or itemId/);
     }
   });

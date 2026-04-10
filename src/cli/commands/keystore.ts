@@ -34,7 +34,7 @@ export interface ResolvedStatus {
 
 /**
  * Pure detection: figure out what the current config says about the
- * wallet backend, without making any external calls. This is the cheap
+ * current wallet storage path, without making any external calls. This is the cheap
  * path that runs for `moneyos keystore status` by default — no biometric
  * prompts, no network, no op invocation.
  *
@@ -44,14 +44,14 @@ export interface ResolvedStatus {
  *     state — enforcement of exclusivity lives at the command layer, not
  *     the config schema).
  *   - Otherwise, if `keyStore.kind === "file"` OR a legacy `privateKey`
- *     field is present, the backend is `file`.
+ *     field is present, the storage path is `file`.
  *   - Otherwise, no wallet is configured.
  */
 export function resolveStatus(
   config: CLIConfig,
   configPath: string,
 ): ResolvedStatus {
-  // 1Password backend — highest precedence.
+  // Transitional 1Password-compatible path — highest precedence.
   if (config.keyStore?.kind === "1password") {
     const { vaultId, itemId, address } = config.keyStore;
     if (!vaultId || !itemId) {
@@ -75,7 +75,7 @@ export function resolveStatus(
     };
   }
 
-  // File backend — either the new `keyStore.kind === "file"` field OR a
+  // File path — either the new `keyStore.kind === "file"` field OR a
   // legacy `privateKey` field in the root of the config.
   const hasFileKeyStore = config.keyStore?.kind === "file";
   const hasPrivateKey = Boolean(config.privateKey);
@@ -186,7 +186,7 @@ export function formatStatus(status: ResolvedStatus): string {
 // --- Live probe ---
 
 /**
- * Opt-in liveness check for the 1Password backend: actually runs `op
+ * Opt-in liveness check for the current 1Password-compatible path: actually runs `op
  * read` via `OnePasswordKeyStore.loadSigner()`. This triggers the
  * biometric prompt on the user's Mac, which is why the default status
  * command does NOT call it.
@@ -227,7 +227,7 @@ async function probeOnePasswordLive(
 // --- Commander wiring ---
 
 export const keystoreCommand = new Command("keystore").description(
-  "Manage MoneyOS key storage backends",
+  "Manage MoneyOS wallet storage paths",
 );
 
 keystoreCommand
@@ -235,7 +235,7 @@ keystoreCommand
   .description("Show how the current wallet is stored")
   .option(
     "--live",
-    "Verify the wallet is reachable (1Password: triggers biometric prompt)",
+    "Verify the wallet is reachable (1Password path: triggers biometric prompt)",
   )
   .option(
     "--op-binary <path>",
@@ -246,8 +246,8 @@ keystoreCommand
     const configPath = getConfigPath();
     let status = resolveStatus(config, configPath);
 
-    // Only 1Password backends in a `configured` state benefit from a
-    // live probe. File backends are already verified as part of
+    // Only 1Password-configured paths in a `configured` state benefit from a
+    // live probe. File paths are already verified as part of
     // `resolveStatus` (address derivation); 1password/invalid and
     // 1password/unreachable would either skip the probe or fall through
     // to the same error report.
@@ -293,12 +293,12 @@ export function validateMigrationPreconditions(
       case "1password":
         // Covers both 1password/configured and 1password/invalid: the
         // user is already on (or intended to be on) the 1password
-        // backend, so migrating there is a no-op or a fix-up, not a
+        // path, so migrating there is a no-op or a fix-up, not a
         // migration. If their 1p config is broken, they should fix it
         // (or re-run init) rather than re-running migrate.
         return {
           ok: false,
-          reason: "already using the 1Password backend",
+          reason: "already using the current 1Password-compatible path",
         };
       case "file":
         if (status.state === "ready") {
@@ -318,7 +318,7 @@ export function validateMigrationPreconditions(
         }
         return {
           ok: false,
-          reason: `unexpected file-backend state: ${status.state}`,
+          reason: `unexpected file-path state: ${status.state}`,
         };
     }
   }
@@ -336,7 +336,7 @@ export function validateMigrationPreconditions(
       // migrate to where you already are.
       return {
         ok: false,
-        reason: "already using the file backend",
+        reason: "already using the file path",
       };
     case "1password":
       if (status.state === "configured") {
@@ -345,12 +345,12 @@ export function validateMigrationPreconditions(
       if (status.state === "invalid") {
         return {
           ok: false,
-          reason: `source 1Password config is invalid: ${status.reason ?? "unknown"}`,
+          reason: `source 1Password-compatible config is invalid: ${status.reason ?? "unknown"}`,
         };
       }
       return {
         ok: false,
-        reason: `unexpected 1password-backend state: ${status.state}`,
+        reason: `unexpected 1password-path state: ${status.state}`,
       };
   }
 }
@@ -616,7 +616,7 @@ keystoreCommand
     const newConfig = buildReverseMigrationConfig(config, privateKey);
     saveConfig(newConfig);
 
-    console.log(`Migrated to file backend.`);
+    console.log(`Migrated to file path.`);
     console.log(`Address:  ${derivedAddress}`);
     console.log(`Config:   ${configPath}`);
     console.log(
@@ -627,7 +627,7 @@ keystoreCommand
       // Opt-in cleanup. Migration itself has already succeeded at this
       // point — if deletion fails, we warn but do NOT roll back the
       // config or exit non-zero. The user can still use their wallet
-      // via the file backend; the stale 1Password item is cosmetic.
+      // via the file path; the stale 1Password item is cosmetic.
       try {
         const deleteResult = await runner.run([
           "item",

@@ -61,12 +61,26 @@ plug in.
 
 MoneyOS currently supports two wallet-storage modes:
 
-- File-backed: legacy `~/.moneyos/config.json` private-key storage
-- 1Password-backed: stores the key in 1Password and keeps only stable IDs plus
-  cached metadata in local config
+- File-backed: legacy plaintext `~/.moneyos/config.json` private-key storage
+- 1Password-backed: stores the private key itself in 1Password and keeps only
+  stable IDs plus cached metadata in local config
+
+That is the landed code today. The intended long-term product direction is an
+encrypted local wallet as the source of truth, with password managers acting as
+optional unlock helpers rather than the true wallet backend.
+
+Normal CLI wallet commands resolve the signer through one shared path, so
+`send`, `swap`, and own-wallet `balance` no longer need to read
+`config.privateKey` directly. For ephemeral agent/CI runs,
+`MONEYOS_PRIVATE_KEY` still overrides the configured path.
+
+For the current transitional 1Password-compatible path, own-wallet balance uses
+cached local address metadata when available, so it can stay read-only without
+hitting 1Password. If that cached address is missing from an older config, the
+CLI currently falls back to a 1Password read to recover the address.
 
 The design notes for the KeyStore work live in
-[`docs/step-7-keystore.md`](docs/step-7-keystore.md).
+[`docs/keystore.md`](docs/keystore.md).
 
 ## Supported chains and tokens
 

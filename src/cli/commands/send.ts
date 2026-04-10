@@ -3,6 +3,7 @@ import { getChain } from "@moneyos/core";
 import { MoneyOS } from "../../core/client.js";
 import { loadConfig } from "../config.js";
 import type { Address } from "viem";
+import { buildCliMoneyOSConfig } from "../wallet.js";
 
 export const sendCommand = new Command("send")
   .description("Send tokens to an address")
@@ -10,25 +11,33 @@ export const sendCommand = new Command("send")
   .argument("<token>", "Token symbol (e.g. USDC, ETH, RYZE)")
   .argument("<to>", "Recipient address")
   .option("-c, --chain <chainId>", "Chain ID (default: 42161 Arbitrum)")
+  .option(
+    "--op-binary <path>",
+    "INTERNAL: path to the op CLI binary (for tests and smoke runs)",
+  )
   .action(async (amount: string, token: string, to: string, options) => {
     const config = loadConfig();
-
-    if (!config.privateKey) {
-      console.error(
-        "No private key configured. Run: moneyos init",
-      );
-      process.exit(1);
-    }
 
     const chainId = options.chain
       ? parseInt(options.chain)
       : config.chainId ?? 42161;
 
-    const moneyos = new MoneyOS({
-      chainId,
-      rpcUrl: config.rpcUrl,
-      privateKey: config.privateKey,
-    });
+    let moneyos: MoneyOS;
+    try {
+      moneyos = new MoneyOS(
+        await buildCliMoneyOSConfig(config, {
+          chainId,
+          requireSigner: true,
+          opBinary: options.opBinary,
+        }),
+      );
+    } catch (error) {
+      console.error(
+        error instanceof Error ? error.message : String(error),
+      );
+      process.exitCode = 1;
+      return;
+    }
 
     const chain = getChain(chainId);
     console.log(

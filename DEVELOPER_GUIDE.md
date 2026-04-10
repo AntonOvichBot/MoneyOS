@@ -47,6 +47,7 @@ src/
 ├── cli/
 │   ├── index.ts      — CLI entry (commander)
 │   ├── config.ts     — ~/.moneyos/config.json management
+│   ├── wallet.ts     — CLI-side signer/backend resolution
 │   ├── version.ts
 │   └── commands/
 │       ├── init.ts
@@ -168,7 +169,7 @@ command runs in a fresh commander state:
 2. `moneyos keystore status`           (cheap probe, no prompt)
 3. `moneyos keystore status --live`    (1Password biometric prompt)
 4. `moneyos keystore migrate --to file --yes --delete-1password-item`
-5. `moneyos keystore status`           (verify file backend)
+5. `moneyos keystore status`           (verify file path)
 
 Expect at least **four biometric prompts** on your Mac: one for
 `op item create`, one for `op read` (status --live), one for `op read`
@@ -233,7 +234,11 @@ built `dist/`.
 - Commander for CLI
 - Arbitrum as default chain (RYZE token lives there)
 - Odos as default swap provider (uses 0x000...000 for native ETH)
-- Private key stored at ~/.moneyos/config.json with 0o600 permissions
+- Current CLI signer resolution: env private key → 1Password-backed wallet path → legacy file path
+- Own-wallet balance on the 1Password-compatible path uses cached `keyStore.address` when available; missing cache falls back to `op read`
+- Legacy local backend still stores `privateKey` in ~/.moneyos/config.json with 0o600 permissions
+- SDK surface stays storage-agnostic via `signer` / `execute`
+- Target product direction: encrypted local wallet + unlock/session flow, with password managers acting as unlock helpers
 - EOA is the canonical identity; smart accounts are an opt-in execution mode
 - Runtime shape: read, execute, assets, config (intentionally small)
 - `createMoneyOS` accepts injected runtime parts (`execute`, `read`, `assets`) — external packages plug in via this seam

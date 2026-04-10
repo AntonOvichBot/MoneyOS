@@ -19,7 +19,7 @@ export const initCommand = new Command("init")
   .option("--rpc <url>", "Custom RPC URL")
   .option(
     "--store <kind>",
-    "Key storage backend: 'file' (default) or '1password'",
+    "Current wallet storage mode: 'file' (default) or transitional '1password'",
     "file",
   )
   // Internal: path to the `op` binary. Undocumented in --help (commander
@@ -46,7 +46,7 @@ export const initCommand = new Command("init")
     //
     // These preserve the v0.2 behavior for file-backed wallets and extend
     // the same "don't clobber an existing wallet unless the user asked"
-    // UX to 1Password-backed wallets.
+    // UX to the currently-landed 1Password-compatible path.
 
     if (existing.privateKey && !options.key) {
       const account = privateKeyToAccount(existing.privateKey);
@@ -105,7 +105,7 @@ export const initCommand = new Command("init")
       return;
     }
 
-    // --- 1Password path ---
+    // --- Transitional 1Password-compatible path ---
 
     const runner = new ChildProcessOpRunner({
       binary: options.opBinary,

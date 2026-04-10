@@ -3,6 +3,7 @@ import { getChain } from "@moneyos/core";
 import { MoneyOS } from "../../core/client.js";
 import { OdosProvider } from "../../providers/odos.js";
 import { loadConfig } from "../config.js";
+import { buildCliMoneyOSConfig } from "../wallet.js";
 
 export const swapCommand = new Command("swap")
   .description("Swap tokens")
@@ -11,23 +12,33 @@ export const swapCommand = new Command("swap")
   .argument("<tokenOut>", "Token to buy (e.g. RYZE)")
   .option("-c, --chain <chainId>", "Chain ID (default: 42161 Arbitrum)")
   .option("-s, --slippage <percent>", "Slippage tolerance in percent (default: 1)")
+  .option(
+    "--op-binary <path>",
+    "INTERNAL: path to the op CLI binary (for tests and smoke runs)",
+  )
   .action(async (amount: string, tokenIn: string, tokenOut: string, options) => {
     const config = loadConfig();
-
-    if (!config.privateKey) {
-      console.error("No private key configured. Run: moneyos init");
-      process.exit(1);
-    }
 
     const chainId = options.chain
       ? parseInt(options.chain)
       : config.chainId ?? 42161;
 
-    const moneyos = new MoneyOS({
-      chainId,
-      rpcUrl: config.rpcUrl,
-      privateKey: config.privateKey,
-    });
+    let moneyos: MoneyOS;
+    try {
+      moneyos = new MoneyOS(
+        await buildCliMoneyOSConfig(config, {
+          chainId,
+          requireSigner: true,
+          opBinary: options.opBinary,
+        }),
+      );
+    } catch (error) {
+      console.error(
+        error instanceof Error ? error.message : String(error),
+      );
+      process.exitCode = 1;
+      return;
+    }
 
     const provider = new OdosProvider();
     const chain = getChain(chainId);

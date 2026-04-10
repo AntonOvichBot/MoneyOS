@@ -78,9 +78,9 @@ describe("MoneyOS constructor", () => {
     expect(m).toBeDefined();
   });
 
-  it("throws when accessing address without private key", async () => {
+  it("throws when accessing address without any signing configuration", async () => {
     const { MoneyOS } = await import("../src/index.js");
     const m = new MoneyOS({ chainId: 42161 });
-    expect(() => m.address).toThrow("No private key configured");
+    expect(() => m.address).toThrow("No signing account configured");
   });
 });

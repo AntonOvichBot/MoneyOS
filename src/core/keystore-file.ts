@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { Account, Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { KeyStore, KeyStoreMetadata } from "@moneyos/core";
+import { privateKeyToManagedAccount } from "./signer.js";
 
 /**
  * FileKeyStore — the default KeyStore backend.
@@ -71,7 +72,7 @@ export class FileKeyStore implements KeyStore {
         `FileKeyStore: no private key found at ${this.configPath}. Run \`moneyos init\` to create one.`,
       );
     }
-    return privateKeyToAccount(config.privateKey);
+    return privateKeyToManagedAccount(config.privateKey);
   }
 
   /**

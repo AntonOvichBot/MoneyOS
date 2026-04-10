@@ -2,12 +2,17 @@ import type { Account, Address, Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { KeyStore, KeyStoreMetadata } from "@moneyos/core";
 import type { OpRunner } from "./op-runner.js";
+import { privateKeyToManagedAccount } from "./signer.js";
 
 /**
  * OnePasswordKeyStore — loads a signer from a 1Password item via the `op`
  * CLI.
  *
- * Design rules (see `docs/step-7-keystore.md`):
+ * This preserves the currently-landed 1Password private-key storage path for
+ * continuity, but it should be treated as transitional relative to the target
+ * encrypted-local-wallet architecture documented in `docs/keystore.md`.
+ *
+ * Design rules:
  *
  *   - The store holds the stable identifier set `{ vaultId, itemId }`,
  *     never user-visible titles. `address` and `label` are display caches
@@ -20,8 +25,8 @@ import type { OpRunner } from "./op-runner.js";
  *     architectural contract with the 1Password item schema.
  *   - This module deliberately does NOT know how to *create* an item.
  *     Item creation lives in the CLI flow for `moneyos init --store
- *     1password` (step 8). This class is read-only; it assumes someone
- *     else wrote the item.
+ *     1password`. This class is read-only; it assumes someone else wrote
+ *     the item.
  *   - `hasKey()` and `metadata()` are cheap and synchronous-shaped — they
  *     do not shell out to `op` and therefore do not trigger biometric
  *     prompts. Only `loadSigner()` actually calls the runner.
@@ -117,7 +122,7 @@ export class OnePasswordKeyStore implements KeyStore {
 
     let signer: Account;
     try {
-      signer = privateKeyToAccount(raw as Hex);
+      signer = privateKeyToManagedAccount(raw as Hex);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
