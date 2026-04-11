@@ -3,7 +3,6 @@ import {
   createDecipheriv,
   randomBytes,
   scryptSync,
-  timingSafeEqual,
 } from "node:crypto";
 import {
   chmodSync,
@@ -219,6 +218,8 @@ function deriveKey(
 }
 
 function walletAad(kdf: EncryptedWalletKdfConfig): Buffer {
+  // If the KDF shape changes in a future wallet version, update this payload so
+  // all KDF fields remain bound to the AEAD tag.
   return Buffer.from(
     JSON.stringify({
       name: kdf.name,
@@ -331,15 +332,6 @@ async function decryptWalletFile(
     const privateKey = parsed.privateKey as Hex;
     const derivedAddress = privateKeyToAccount(privateKey).address;
     if (derivedAddress.toLowerCase() !== wallet.address.toLowerCase()) {
-      throw new Error("wallet address metadata mismatch");
-    }
-
-    const expected = Buffer.from(wallet.address.toLowerCase(), "utf8");
-    const actual = Buffer.from(derivedAddress.toLowerCase(), "utf8");
-    if (
-      expected.length !== actual.length ||
-      !timingSafeEqual(expected, actual)
-    ) {
       throw new Error("wallet address metadata mismatch");
     }
 

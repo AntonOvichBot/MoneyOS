@@ -68,7 +68,7 @@ const MAX_MESSAGE_BYTES = 32 * 1024;
 const SECURE_DIR_MODE = 0o700;
 const SECURE_FILE_MODE = 0o600;
 const SERVER_SOCKET_TIMEOUT_MS = 5000;
-const SESSION_SHUTDOWN_TIMEOUT_MS = 2000;
+const SESSION_SHUTDOWN_TIMEOUT_MS = 15000;
 
 function isWindowsPipe(path: string): boolean {
   return path.startsWith("\\\\.\\pipe\\");
@@ -510,12 +510,14 @@ export async function startDetachedSessionDaemon(
   const existing = await getSessionStatus(params.socketPath, params.tokenPath);
   if (existing) {
     const locked = await lockSession(params.socketPath, params.tokenPath);
-    if (!locked) {
+    if (!locked && !sessionFilesGone(params.socketPath, params.tokenPath)) {
       throw new Error(
         "Failed to replace the existing MoneyOS session. Run `moneyos auth lock` and try again.",
       );
     }
-    await waitForSessionShutdown(params.socketPath, params.tokenPath);
+    if (locked) {
+      await waitForSessionShutdown(params.socketPath, params.tokenPath);
+    }
   } else {
     removeFileIfPresent(params.socketPath);
     removeFileIfPresent(params.tokenPath);
