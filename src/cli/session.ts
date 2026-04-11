@@ -63,7 +63,8 @@ type SessionResponse =
     }
   | { id: string; ok: false; error: string };
 
-const DEFAULT_TIMEOUT_MS = 750;
+const SESSION_CONTROL_TIMEOUT_MS = 750;
+const SESSION_SEND_TIMEOUT_MS = 60_000;
 const MAX_MESSAGE_BYTES = 32 * 1024;
 const SECURE_DIR_MODE = 0o700;
 const SECURE_FILE_MODE = 0o600;
@@ -192,7 +193,7 @@ async function sendSessionRequest(
   socketPath: string,
   tokenPath: string,
   request: SessionRequestWithoutToken,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  timeoutMs: number = SESSION_CONTROL_TIMEOUT_MS,
 ): Promise<SessionResponse> {
   const fullRequest = {
     ...request,
@@ -252,7 +253,7 @@ export async function getSessionStatus(
         id: createRequestId(),
         type: "status",
       },
-      DEFAULT_TIMEOUT_MS,
+      SESSION_CONTROL_TIMEOUT_MS,
     );
     return response.ok ? (response.result as SessionStatusResult) : undefined;
   } catch {
@@ -274,7 +275,7 @@ export async function lockSession(
         id: createRequestId(),
         type: "lock",
       },
-      DEFAULT_TIMEOUT_MS,
+      SESSION_CONTROL_TIMEOUT_MS,
     );
     return response.ok;
   } catch {
@@ -318,7 +319,7 @@ export class SessionExecutionClient implements ExecutionClient {
           value: call.value?.toString(),
         },
       },
-      DEFAULT_TIMEOUT_MS,
+      SESSION_SEND_TIMEOUT_MS,
     );
 
     if (!response.ok) {
@@ -340,6 +341,7 @@ export class SessionExecutionClient implements ExecutionClient {
 export async function startSessionServer(
   start: SessionServerStartMessage,
   hooks: {
+    executor?: ExecutionClient;
     onError?: (error: Error) => void;
     onExit?: () => void;
   } = {},
@@ -350,7 +352,7 @@ export async function startSessionServer(
   removeFileIfPresent(start.tokenPath);
 
   const signer = privateKeyToManagedAccount(start.privateKey);
-  const executor = new EOAExecutor(signer, {
+  const executor = hooks.executor ?? new EOAExecutor(signer, {
     defaultChainId: start.chainId,
     rpcUrl: start.rpcUrl,
   });
@@ -454,6 +456,9 @@ export async function startSessionServer(
           return;
         }
 
+        socket.setTimeout(SESSION_SEND_TIMEOUT_MS, () => {
+          socket.destroy();
+        });
         const result = await executor.send({
           to: request.params.to,
           chainId: request.params.chainId,

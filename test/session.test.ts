@@ -4,9 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import type {
+  CallRequest,
+  ExecutionClient,
+  ExecutionResult,
+} from "@moneyos/core";
 import {
   getSessionStatus,
   lockSession,
+  SessionExecutionClient,
   startSessionServer,
 } from "../src/cli/session.js";
 
@@ -77,5 +83,68 @@ describe("local auth session", () => {
     const status = await getSessionStatus(socketPath, tokenPath);
     expect(status).toBeUndefined();
     rmSync(baseDir, { recursive: true, force: true });
+  });
+
+  it("keeps a slow send request alive long enough to return the executor result", async () => {
+    const baseDir = makeSocketPath("moneyos-auth-session-send");
+    const socketPath =
+      process.platform === "win32"
+        ? `\\\\.\\pipe\\moneyos-auth-session-send-${Date.now()}`
+        : join(baseDir, "session.sock");
+    const tokenPath = join(baseDir, "session.token");
+    const expectedResult: ExecutionResult = {
+      hash: `0x${"1".repeat(64)}` as Hex,
+      chainId: 42161,
+    };
+    const slowExecutor: ExecutionClient = {
+      mode: "eoa",
+      getAddress: () => TEST_ADDRESS,
+      async send(call: CallRequest): Promise<ExecutionResult> {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        return {
+          hash: expectedResult.hash,
+          chainId: call.chainId,
+        };
+      },
+      capabilities() {
+        return {
+          sponsoredGas: false,
+          batching: false,
+          simulation: false,
+        };
+      },
+    };
+    const handle = await startSessionServer(
+      {
+        type: "start",
+        privateKey: TEST_PK,
+        chainId: 42161,
+        socketPath,
+        tokenPath,
+        ttlMs: 5000,
+      },
+      {
+        executor: slowExecutor,
+      },
+    );
+
+    try {
+      const client = new SessionExecutionClient({
+        socketPath,
+        tokenPath,
+        address: TEST_ADDRESS,
+      });
+
+      await expect(
+        client.send({
+          to: TEST_ADDRESS,
+          chainId: 42161,
+          value: 0n,
+        }),
+      ).resolves.toEqual(expectedResult);
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
   });
 });

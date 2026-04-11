@@ -164,11 +164,18 @@ describe("loadCliAddress", () => {
   });
 
   it("throws a clear error for legacy plaintext configs", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-cli-address-legacy-"));
+    const walletPath = join(tmpDir, "wallet.json");
+
+    try {
     await expect(
       loadCliAddress({
         privateKey: TEST_PK,
-      }),
+      }, { walletPath }),
     ).rejects.toThrow(/plaintext local wallet configs are no longer used/i);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   it("throws a clear error for the removed 1Password-backed model", async () => {
