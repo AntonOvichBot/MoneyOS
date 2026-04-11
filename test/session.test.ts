@@ -20,22 +20,24 @@ const TEST_PK: Hex =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const TEST_ADDRESS = privateKeyToAccount(TEST_PK).address;
 
-function makeSocketPath(prefix: string): string {
-  const baseDir = mkdtempSync(join(tmpdir(), `${prefix}-`));
-  if (process.platform === "win32") {
-    return baseDir;
-  }
-  return baseDir;
+function makeSessionPaths(prefix: string): {
+  baseDir: string;
+  socketPath: string;
+  tokenPath: string;
+} {
+  const baseDir = mkdtempSync(join(tmpdir(), "mos-"));
+  const shortPrefix = prefix.slice(0, 8);
+  const socketPath =
+    process.platform === "win32"
+      ? `\\\\.\\pipe\\mos-${shortPrefix}-${Date.now()}`
+      : join(baseDir, "s.sock");
+  const tokenPath = join(baseDir, "t");
+  return { baseDir, socketPath, tokenPath };
 }
 
 describe("local auth session", () => {
   it("reports unlocked status and locks cleanly", async () => {
-    const baseDir = makeSocketPath("moneyos-auth-session");
-    const socketPath =
-      process.platform === "win32"
-        ? `\\\\.\\pipe\\moneyos-auth-session-${Date.now()}`
-        : join(baseDir, "session.sock");
-    const tokenPath = join(baseDir, "session.token");
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("status");
     const handle = await startSessionServer({
       type: "start",
       privateKey: TEST_PK,
@@ -63,12 +65,7 @@ describe("local auth session", () => {
   });
 
   it("expires automatically after the ttl", async () => {
-    const baseDir = makeSocketPath("moneyos-auth-session-expiry");
-    const socketPath =
-      process.platform === "win32"
-        ? `\\\\.\\pipe\\moneyos-auth-session-expiry-${Date.now()}`
-        : join(baseDir, "session.sock");
-    const tokenPath = join(baseDir, "session.token");
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("expiry");
     const handle = await startSessionServer({
       type: "start",
       privateKey: TEST_PK,
@@ -86,12 +83,7 @@ describe("local auth session", () => {
   });
 
   it("keeps a slow send request alive long enough to return the executor result", async () => {
-    const baseDir = makeSocketPath("moneyos-auth-session-send");
-    const socketPath =
-      process.platform === "win32"
-        ? `\\\\.\\pipe\\moneyos-auth-session-send-${Date.now()}`
-        : join(baseDir, "session.sock");
-    const tokenPath = join(baseDir, "session.token");
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("send");
     const expectedResult: ExecutionResult = {
       hash: `0x${"1".repeat(64)}` as Hex,
       chainId: 42161,
