@@ -4,16 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import {
-  loadFileConfig,
-  saveConfig,
-  type CLIConfig,
-} from "../src/cli/config.js";
+import { FileEncryptedWalletStore } from "../src/core/encrypted-wallet.js";
 import {
   buildCliMoneyOSConfig,
   loadCliAddress,
-  loadCliSigner,
 } from "../src/cli/wallet.js";
+import { startSessionServer } from "../src/cli/session.js";
+import type { CLIConfig } from "../src/cli/config.js";
 
 const TEST_PK: Hex =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -22,63 +19,20 @@ const ALT_PK: Hex =
 const TEST_ADDRESS = privateKeyToAccount(TEST_PK).address;
 const ALT_ADDRESS = privateKeyToAccount(ALT_PK).address;
 
-describe("loadCliSigner", () => {
-  it("uses MONEYOS_PRIVATE_KEY-style input before file config", async () => {
-    const result = await loadCliSigner(
-      { privateKey: ALT_PK },
-      { envPrivateKey: TEST_PK },
-    );
-
-    expect(result.kind).toBe("env");
-    expect(result.address).toBe(TEST_ADDRESS);
-    expect((result.signer as any).nonceManager).toBeDefined();
-  });
-
-  it("loads the file path through FileKeyStore", async () => {
-    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-cli-wallet-"));
-    const configPath = join(tmpDir, "config.json");
-
-    try {
-      saveConfig(
-        {
-          chainId: 42161,
-          privateKey: TEST_PK,
-        },
-        configPath,
-      );
-
-      const result = await loadCliSigner(loadFileConfig(configPath), {
-        configPath,
-      });
-
-      expect(result.kind).toBe("file");
-      expect(result.address).toBe(TEST_ADDRESS);
-      expect((result.signer as any).nonceManager).toBeDefined();
-    } finally {
-      rmSync(tmpDir, { recursive: true, force: true });
-    }
-  });
-
-  it("throws a clear error for the removed 1Password-backed model", async () => {
-    const removedConfig = {
-      keyStore: {
-        kind: "1password",
-      },
-    } as CLIConfig;
-
-    await expect(loadCliSigner(removedConfig)).rejects.toThrow(
-      /no longer supports the old 1Password-backed private-key storage path/i,
-    );
-  });
-});
+function makeSocketPath(prefix: string): string {
+  const baseDir = mkdtempSync(join(tmpdir(), `${prefix}-`));
+  if (process.platform === "win32") {
+    return baseDir;
+  }
+  return baseDir;
+}
 
 describe("buildCliMoneyOSConfig", () => {
-  it("does not attach a signer for read-only calls", async () => {
+  it("does not attach execute or signer for read-only calls", async () => {
     const result = await buildCliMoneyOSConfig(
       {
         chainId: 42161,
         rpcUrl: "https://arb1.arbitrum.io/rpc",
-        privateKey: TEST_PK,
       },
       {
         requireSigner: false,
@@ -91,7 +45,7 @@ describe("buildCliMoneyOSConfig", () => {
     });
   });
 
-  it("attaches a signer when a command needs wallet access", async () => {
+  it("uses MONEYOS_PRIVATE_KEY-style input before any local wallet state", async () => {
     const result = await buildCliMoneyOSConfig(
       { chainId: 42161 },
       {
@@ -102,31 +56,98 @@ describe("buildCliMoneyOSConfig", () => {
 
     expect(result.chainId).toBe(42161);
     expect(result.signer?.address).toBe(ALT_ADDRESS);
+    expect(result.execute).toBeUndefined();
+  });
+
+  it("attaches a local session executor when unlocked", async () => {
+    const baseDir = makeSocketPath("moneyos-session-test");
+    const socketPath =
+      process.platform === "win32"
+        ? `\\\\.\\pipe\\moneyos-session-test-${Date.now()}`
+        : join(baseDir, "session.sock");
+    const tokenPath = join(baseDir, "session.token");
+    const handle = await startSessionServer({
+      type: "start",
+      privateKey: TEST_PK,
+      chainId: 42161,
+      socketPath,
+      tokenPath,
+      ttlMs: 1000,
+    });
+
+    try {
+      const result = await buildCliMoneyOSConfig(
+        { chainId: 42161 },
+        {
+          requireSigner: true,
+          sessionSocketPath: socketPath,
+          sessionTokenPath: tokenPath,
+        },
+      );
+
+      expect(result.execute?.getAddress()).toBe(TEST_ADDRESS);
+      expect(result.signer).toBeUndefined();
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws a clear locked-wallet error when the encrypted wallet exists but no session is active", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-cli-wallet-"));
+    const walletPath = join(tmpDir, "wallet.json");
+    const store = new FileEncryptedWalletStore(walletPath);
+
+    try {
+      await store.save({
+        privateKey: TEST_PK,
+        passphrase: "secret passphrase",
+      });
+
+      await expect(
+        buildCliMoneyOSConfig(
+          { chainId: 42161 },
+          { requireSigner: true, walletPath },
+        ),
+      ).rejects.toThrow(/wallet is locked/i);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws a clear error for the removed 1Password-backed model", async () => {
+    const removedConfig = {
+      keyStore: {
+        kind: "1password",
+      },
+    } as CLIConfig;
+
+    await expect(
+      buildCliMoneyOSConfig(removedConfig, { requireSigner: true }),
+    ).rejects.toThrow(
+      /no longer supports the old 1Password-backed private-key storage path/i,
+    );
   });
 });
 
 describe("loadCliAddress", () => {
-  it("derives the file-path address locally without loading a signer", async () => {
+  it("derives the encrypted-wallet address locally without needing unlock", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-cli-address-"));
-    const configPath = join(tmpDir, "config.json");
+    const walletPath = join(tmpDir, "wallet.json");
+    const store = new FileEncryptedWalletStore(walletPath);
 
     try {
-      saveConfig(
-        {
-          chainId: 42161,
-          privateKey: TEST_PK,
-        },
-        configPath,
-      );
-
-      const result = await loadCliAddress(loadFileConfig(configPath), {
-        configPath,
+      await store.save({
+        privateKey: TEST_PK,
+        passphrase: "secret passphrase",
       });
 
+      const result = await loadCliAddress({}, { walletPath });
+
       expect(result).toEqual({
-        kind: "file",
+        kind: "wallet-file",
         address: TEST_ADDRESS,
-        source: "local-file",
+        source: "encrypted-wallet",
       });
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
@@ -140,6 +161,14 @@ describe("loadCliAddress", () => {
       address: TEST_ADDRESS,
       source: "env",
     });
+  });
+
+  it("throws a clear error for legacy plaintext configs", async () => {
+    await expect(
+      loadCliAddress({
+        privateKey: TEST_PK,
+      }),
+    ).rejects.toThrow(/plaintext local wallet configs are no longer used/i);
   });
 
   it("throws a clear error for the removed 1Password-backed model", async () => {

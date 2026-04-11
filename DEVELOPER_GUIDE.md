@@ -39,7 +39,8 @@ src/
 │   ├── chains.ts        — re-exports from @moneyos/core + getViemChain
 │   ├── client.ts        — MoneyOS class (balance, send, swap)
 │   ├── eoa.ts           — EOAExecutor, ViemReadClient implementations
-│   ├── keystore-file.ts — local file-backed wallet adapter
+│   ├── encrypted-wallet.ts — encrypted local wallet file + crypto helpers
+│   ├── backup-file.ts   — encrypted wallet backup provider
 │   ├── signer.ts        — nonce-managed local signer helper
 │   ├── access-local.ts  — LocalAccessAdapter
 │   └── factory.ts       — createMoneyOS helper
@@ -49,11 +50,16 @@ src/
 │   └── swap.ts          — executeSwap shared helper
 ├── cli/
 │   ├── index.ts         — CLI entry (commander)
-│   ├── config.ts        — ~/.moneyos/config.json management
+│   ├── config.ts        — ~/.moneyos/config.json + wallet/backup path helpers
 │   ├── wallet.ts        — shared CLI wallet/address resolution
+│   ├── wallet-status.ts — wallet status formatting and legacy detection
+│   ├── prompt.ts        — hidden terminal password prompt
+│   ├── session.ts       — local unlock session daemon/client
 │   ├── version.ts
 │   └── commands/
 │       ├── init.ts
+│       ├── auth.ts
+│       ├── backup.ts
 │       ├── balance.ts
 │       ├── send.ts
 │       ├── swap.ts
@@ -170,12 +176,14 @@ the downstream workspace packages.
 
 What is landed today:
 
-- the CLI supports a local file-backed wallet in `~/.moneyos/config.json`
-- `MONEYOS_PRIVATE_KEY` can override that local file for ephemeral runs
-- `src/cli/wallet.ts` is the shared resolver for "my wallet" address and signer
-- write commands go through the shared resolver instead of reading
-  `config.privateKey` inside each command
-- local EOA signers use viem's nonce manager
+- the root CLI wallet lives in `~/.moneyos/wallet.json` as an encrypted local wallet
+- `~/.moneyos/config.json` stores only non-secret config such as chain and RPC settings
+- `~/.moneyos/backups/` stores encrypted wallet backup files
+- `MONEYOS_PRIVATE_KEY` can still override local wallet state for explicit ephemeral runs
+- `src/cli/wallet.ts` is the shared resolver for wallet address and write access
+- `moneyos auth unlock` starts a short-lived local session daemon for write commands
+- read-only own-wallet balance resolves address metadata without requiring unlock
+- local EOA execution still uses viem's nonce manager
 
 What was intentionally removed:
 
@@ -185,10 +193,17 @@ What was intentionally removed:
 
 Target direction:
 
-- encrypted local wallet as source of truth
-- password/passphrase unlock model
-- session cache for short-lived CLI auth
-- optional password-manager helpers as unlock helpers only
+- local encrypted wallet as source of truth
+- local hidden password prompt for human unlock
+- short-lived local session for agents and terminal workflows
+- password managers as optional password storage choices, not wallet backends
+
+Upgrade note:
+
+- legacy `config.json` files that still contain `privateKey` are treated as
+  import-only state now, not active runtime state
+- local users should run `moneyos init` to move that wallet into the encrypted
+  wallet file and create the first backup artifact
 
 For deeper notes, see [`docs/keystore.md`](docs/keystore.md).
 
@@ -200,10 +215,10 @@ For deeper notes, see [`docs/keystore.md`](docs/keystore.md).
 - Commander for CLI
 - Arbitrum as default chain
 - Odos as default swap provider
-- current CLI wallet resolution: env private key -> local file path
+- current CLI wallet resolution: env private key -> local unlock session -> fail closed
 - shared wallet resolution lives in `src/cli/wallet.ts`
 - SDK surface stays storage-agnostic via `signer` / `execute`
-- target product direction is encrypted local wallet + unlock/session
+- current product direction is encrypted local wallet + unlock/session + encrypted backups
 - EOA is the canonical identity; smart accounts are opt-in execution mode
 - runtime shape stays intentionally small: read, execute, assets, config
 - `createMoneyOS` accepts injected runtime parts

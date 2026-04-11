@@ -1,0 +1,81 @@
+import { describe, it, expect } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import {
+  getSessionStatus,
+  lockSession,
+  startSessionServer,
+} from "../src/cli/session.js";
+
+const TEST_PK: Hex =
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const TEST_ADDRESS = privateKeyToAccount(TEST_PK).address;
+
+function makeSocketPath(prefix: string): string {
+  const baseDir = mkdtempSync(join(tmpdir(), `${prefix}-`));
+  if (process.platform === "win32") {
+    return baseDir;
+  }
+  return baseDir;
+}
+
+describe("local auth session", () => {
+  it("reports unlocked status and locks cleanly", async () => {
+    const baseDir = makeSocketPath("moneyos-auth-session");
+    const socketPath =
+      process.platform === "win32"
+        ? `\\\\.\\pipe\\moneyos-auth-session-${Date.now()}`
+        : join(baseDir, "session.sock");
+    const tokenPath = join(baseDir, "session.token");
+    const handle = await startSessionServer({
+      type: "start",
+      privateKey: TEST_PK,
+      chainId: 42161,
+      socketPath,
+      tokenPath,
+      ttlMs: 5000,
+    });
+
+    try {
+      expect(handle.address).toBe(TEST_ADDRESS);
+
+      const status = await getSessionStatus(socketPath, tokenPath);
+      expect(status?.address).toBe(TEST_ADDRESS);
+
+      const locked = await lockSession(socketPath, tokenPath);
+      expect(locked).toBe(true);
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+
+    const statusAfter = await getSessionStatus(socketPath, tokenPath);
+    expect(statusAfter).toBeUndefined();
+  });
+
+  it("expires automatically after the ttl", async () => {
+    const baseDir = makeSocketPath("moneyos-auth-session-expiry");
+    const socketPath =
+      process.platform === "win32"
+        ? `\\\\.\\pipe\\moneyos-auth-session-expiry-${Date.now()}`
+        : join(baseDir, "session.sock");
+    const tokenPath = join(baseDir, "session.token");
+    const handle = await startSessionServer({
+      type: "start",
+      privateKey: TEST_PK,
+      chainId: 42161,
+      socketPath,
+      tokenPath,
+      ttlMs: 50,
+    });
+
+    expect(handle.address).toBe(TEST_ADDRESS);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    const status = await getSessionStatus(socketPath, tokenPath);
+    expect(status).toBeUndefined();
+    rmSync(baseDir, { recursive: true, force: true });
+  });
+});

@@ -1,58 +1,95 @@
 import { describe, it, expect } from "vitest";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { Hex } from "viem";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import type { CLIConfig } from "../src/cli/config.js";
+import { FileEncryptedWalletStore } from "../src/core/encrypted-wallet.js";
 import {
-  resolveStatus,
-  formatStatus,
-  keystoreCommand,
-  type ResolvedStatus,
-} from "../src/cli/commands/keystore.js";
+  resolveWalletStatus,
+  formatWalletStatus,
+  type ResolvedWalletStatus,
+} from "../src/cli/wallet-status.js";
+import { keystoreCommand } from "../src/cli/commands/keystore.js";
 
-const CONFIG_PATH = "/fake/home/.moneyos/config.json";
 const TEST_PK: Hex = generatePrivateKey();
 const TEST_ADDRESS = privateKeyToAccount(TEST_PK).address;
 
-describe("resolveStatus", () => {
-  it("returns kind='none' for an empty config", () => {
-    const status = resolveStatus({}, CONFIG_PATH);
-    expect(status.kind).toBe("none");
-    expect(status.state).toBe("empty");
-    expect(status.configPath).toBe(CONFIG_PATH);
+describe("resolveWalletStatus", () => {
+  it("returns kind='none' when no wallet exists", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-wallet-status-"));
+    const walletPath = join(tmpDir, "wallet.json");
+
+    try {
+      const status = await resolveWalletStatus({}, walletPath);
+      expect(status.kind).toBe("none");
+      expect(status.walletPath).toBe(walletPath);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
-  it("returns file/ready for a valid privateKey", () => {
-    const config: CLIConfig = {
-      chainId: 42161,
-      privateKey: TEST_PK,
-    };
-    const status = resolveStatus(config, CONFIG_PATH);
-    expect(status.kind).toBe("file");
-    expect(status.state).toBe("ready");
-    expect(status.address).toBe(TEST_ADDRESS);
+  it("returns encrypted/ready for a valid wallet file", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-wallet-status-"));
+    const walletPath = join(tmpDir, "wallet.json");
+    const store = new FileEncryptedWalletStore(walletPath);
+
+    try {
+      await store.save({
+        privateKey: TEST_PK,
+        passphrase: "secret passphrase",
+      });
+
+      const status = await resolveWalletStatus({}, walletPath);
+      expect(status.kind).toBe("encrypted");
+      expect(status.address).toBe(TEST_ADDRESS);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
-  it("returns file/invalid when privateKey is malformed", () => {
-    const config: CLIConfig = {
-      chainId: 42161,
-      privateKey: "0xnotarealkey" as Hex,
-    };
-    const status = resolveStatus(config, CONFIG_PATH);
-    expect(status.kind).toBe("file");
-    expect(status.state).toBe("invalid");
-    expect(status.reason).toBeDefined();
+  it("returns invalid when the encrypted wallet file is malformed", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-wallet-status-"));
+    const walletPath = join(tmpDir, "wallet.json");
+
+    try {
+      writeFileSync(walletPath, "{bad json");
+      const status = await resolveWalletStatus({}, walletPath);
+      expect(status.kind).toBe("invalid");
+      expect(status.reason).toBeDefined();
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
-  it("returns unsupported/removed for the deleted 1Password-backed model", () => {
+  it("returns legacy for old plaintext configs", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-wallet-status-"));
+    const walletPath = join(tmpDir, "wallet.json");
+
+    try {
+      const status = await resolveWalletStatus(
+        {
+          privateKey: TEST_PK,
+        },
+        walletPath,
+      );
+      expect(status.kind).toBe("legacy");
+      expect(status.address).toBe(TEST_ADDRESS);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns unsupported for the removed 1Password-backed model", async () => {
     const removedConfig = {
       keyStore: {
         kind: "1password",
         address: TEST_ADDRESS,
       },
     } as CLIConfig;
-    const status = resolveStatus(removedConfig, CONFIG_PATH);
+    const status = await resolveWalletStatus(removedConfig, "/fake/wallet.json");
     expect(status.kind).toBe("unsupported");
-    expect(status.state).toBe("removed");
     expect(status.address).toBe(TEST_ADDRESS);
     expect(status.reason).toMatch(
       /no longer supports the old 1Password-backed private-key storage path/i,
@@ -60,59 +97,56 @@ describe("resolveStatus", () => {
   });
 });
 
-describe("formatStatus", () => {
-  function baseStatus(overrides: Partial<ResolvedStatus>): ResolvedStatus {
+describe("formatWalletStatus", () => {
+  function baseStatus(
+    overrides: Partial<ResolvedWalletStatus>,
+  ): ResolvedWalletStatus {
     return {
-      kind: "file",
-      state: "ready",
-      configPath: CONFIG_PATH,
+      kind: "encrypted",
+      walletPath: "/fake/home/.moneyos/wallet.json",
       ...overrides,
     };
   }
 
-  it("formats file/ready with address and config path", () => {
-    const output = formatStatus(
+  it("formats encrypted wallets clearly", () => {
+    const output = formatWalletStatus(
       baseStatus({
         address: TEST_ADDRESS,
       }),
     );
-    expect(output).toContain("Key store: file");
+    expect(output).toContain("Wallet:    encrypted local wallet");
     expect(output).toContain(`Address:   ${TEST_ADDRESS}`);
-    expect(output).toContain(`Config:    ${CONFIG_PATH}`);
     expect(output).toContain("Status:    ready");
   });
 
-  it("formats file/invalid with the underlying reason", () => {
-    const output = formatStatus(
+  it("formats legacy configs clearly", () => {
+    const output = formatWalletStatus(
       baseStatus({
-        state: "invalid",
-        reason: "invalid hex string",
+        kind: "legacy",
+        address: TEST_ADDRESS,
+        reason: "upgrade required",
       }),
     );
-    expect(output).toMatch(/Status:\s+invalid — invalid hex string/);
+    expect(output).toContain("Wallet:    legacy plaintext config");
+    expect(output).toMatch(/Status:\s+upgrade required/);
   });
 
-  it("formats removed legacy configs clearly", () => {
-    const output = formatStatus({
-      kind: "unsupported",
-      state: "removed",
-      address: TEST_ADDRESS,
-      configPath: CONFIG_PATH,
-      reason:
-        "This repo no longer supports the old 1Password-backed private-key storage path.",
-    });
-    expect(output).toContain("Key store: removed legacy model");
-    expect(output).toContain("(cached metadata)");
-    expect(output).toMatch(/Status:\s+removed/);
+  it("formats invalid wallets with the underlying reason", () => {
+    const output = formatWalletStatus(
+      baseStatus({
+        kind: "invalid",
+        reason: "bad json",
+      }),
+    );
+    expect(output).toMatch(/Status:\s+invalid — bad json/);
   });
 
   it("formats none with a clear init pointer", () => {
-    const output = formatStatus({
+    const output = formatWalletStatus({
       kind: "none",
-      state: "empty",
-      configPath: CONFIG_PATH,
+      walletPath: "/fake/home/.moneyos/wallet.json",
     });
-    expect(output).toContain("Key store: (none)");
+    expect(output).toContain("Wallet:    (none)");
     expect(output).toMatch(/Status:\s+no wallet configured/);
   });
 });

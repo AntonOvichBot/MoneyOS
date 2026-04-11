@@ -4,6 +4,9 @@ import { balanceCommand } from "./commands/balance.js";
 import { sendCommand } from "./commands/send.js";
 import { swapCommand } from "./commands/swap.js";
 import { keystoreCommand } from "./commands/keystore.js";
+import { authCommand } from "./commands/auth.js";
+import { backupCommand } from "./commands/backup.js";
+import { runSessionDaemonProcess } from "./session.js";
 import { version } from "./version.js";
 
 const program = new Command();
@@ -18,5 +21,12 @@ program.addCommand(balanceCommand);
 program.addCommand(sendCommand);
 program.addCommand(swapCommand);
 program.addCommand(keystoreCommand);
+program.addCommand(authCommand);
+program.addCommand(backupCommand);
+program
+  .command("__session-daemon", { hidden: true })
+  .action(async () => {
+    await runSessionDaemonProcess();
+  });
 
 program.parse();

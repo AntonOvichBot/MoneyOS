@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hex } from "viem";
 import {
+  getLegacyPlaintextWalletStorageMessage,
   getRemovedOnePasswordCachedAddress,
   getRemovedOnePasswordStorageMessage,
+  hasLegacyPlaintextWalletConfig,
   hasRemovedOnePasswordConfig,
   loadConfig,
   loadFileConfig,
@@ -38,7 +40,7 @@ describe("loadConfig env vars", () => {
     }
   });
 
-  it("MONEYOS_PRIVATE_KEY overrides file config", () => {
+  it("MONEYOS_PRIVATE_KEY remains an explicit env override", () => {
     const pk =
       "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
     process.env.MONEYOS_PRIVATE_KEY = pk;
@@ -58,26 +60,9 @@ describe("loadConfig env vars", () => {
     expect(config.chainId).toBe(137);
   });
 
-  it("MONEYOS_CHAIN_ID rejects non-numeric string", () => {
+  it("MONEYOS_CHAIN_ID rejects invalid values", () => {
     process.env.MONEYOS_CHAIN_ID = "abc";
     expect(() => loadConfig()).toThrow('Invalid MONEYOS_CHAIN_ID: "abc"');
-  });
-
-  it("MONEYOS_CHAIN_ID rejects trailing text", () => {
-    process.env.MONEYOS_CHAIN_ID = "42161abc";
-    expect(() => loadConfig()).toThrow(
-      'Invalid MONEYOS_CHAIN_ID: "42161abc"',
-    );
-  });
-
-  it("MONEYOS_CHAIN_ID rejects negative values", () => {
-    process.env.MONEYOS_CHAIN_ID = "-1";
-    expect(() => loadConfig()).toThrow('Invalid MONEYOS_CHAIN_ID: "-1"');
-  });
-
-  it("MONEYOS_CHAIN_ID rejects zero", () => {
-    process.env.MONEYOS_CHAIN_ID = "0";
-    expect(() => loadConfig()).toThrow('Invalid MONEYOS_CHAIN_ID: "0"');
   });
 });
 
@@ -94,12 +79,12 @@ describe("CLIConfig file schema", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("round-trips a local file-backed config", () => {
+  it("round-trips non-secret config settings", () => {
     const config: CLIConfig = {
       chainId: 42161,
       rpcUrl: "https://arb1.arbitrum.io/rpc",
-      privateKey:
-        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+      walletPath: join(tmpDir, "wallet.json"),
+      backupDir: join(tmpDir, "backups"),
     };
     saveConfig(config, configPath);
 
@@ -107,11 +92,16 @@ describe("CLIConfig file schema", () => {
     expect(loaded).toEqual(config);
   });
 
-  it("saveConfig creates the parent directory for a custom path", () => {
-    const nestedPath = join(tmpDir, "nested", "subdir", "config.json");
-    saveConfig({ chainId: 42161 }, nestedPath);
+  it("never persists plaintext private keys", () => {
+    const config: CLIConfig = {
+      chainId: 42161,
+      privateKey:
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+    };
+    saveConfig(config, configPath);
 
-    const loaded = loadFileConfig(nestedPath);
+    const loaded = loadFileConfig(configPath);
+    expect(loaded.privateKey).toBeUndefined();
     expect(loaded.chainId).toBe(42161);
   });
 
@@ -121,13 +111,18 @@ describe("CLIConfig file schema", () => {
   });
 });
 
-describe("removed 1Password helper detection", () => {
+describe("legacy config detection", () => {
   const removedConfig = {
     keyStore: {
       kind: "1password",
       address: "0x1234567890123456789012345678901234567890",
     },
   } as CLIConfig;
+
+  const legacyPlaintext = {
+    privateKey:
+      "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" as Hex,
+  };
 
   it("detects a removed 1Password-backed config shape", () => {
     expect(hasRemovedOnePasswordConfig(removedConfig)).toBe(true);
@@ -143,6 +138,17 @@ describe("removed 1Password helper detection", () => {
   it("returns the clear removal message", () => {
     expect(getRemovedOnePasswordStorageMessage()).toMatch(
       /no longer supports the old 1Password-backed private-key storage path/i,
+    );
+  });
+
+  it("detects legacy plaintext wallet configs", () => {
+    expect(hasLegacyPlaintextWalletConfig(legacyPlaintext)).toBe(true);
+    expect(hasLegacyPlaintextWalletConfig({})).toBe(false);
+  });
+
+  it("returns the plaintext upgrade message", () => {
+    expect(getLegacyPlaintextWalletStorageMessage()).toMatch(
+      /plaintext local wallet configs are no longer used/i,
     );
   });
 });

@@ -1,35 +1,35 @@
 import type { MoneyOSConfig } from "@moneyos/core";
-import type { Account, Address, Hex } from "viem";
-import { FileKeyStore } from "../core/keystore-file.js";
+import type { Address, Hex } from "viem";
+import { FileEncryptedWalletStore } from "../core/encrypted-wallet.js";
 import { privateKeyToManagedAccount } from "../core/signer.js";
-import { getConfigPath } from "./config.js";
 import {
+  getLegacyPlaintextWalletStorageMessage,
   getRemovedOnePasswordStorageMessage,
+  getSessionSocketPath,
+  getSessionTokenPath,
+  getWalletPath,
+  hasLegacyPlaintextWalletConfig,
   hasRemovedOnePasswordConfig,
   type CLIConfig,
 } from "./config.js";
+import { getSessionStatus, SessionExecutionClient } from "./session.js";
 
-export type CliWalletBackendKind = "env" | "file";
-
-export interface ResolvedCliSigner {
-  kind: CliWalletBackendKind;
-  signer: Account;
-  address: Address;
-}
+export type CliWalletBackendKind = "env" | "wallet-file" | "session";
 
 export interface ResolvedCliAddress {
-  kind: CliWalletBackendKind;
+  kind: "env" | "wallet-file";
   address: Address;
-  source: "env" | "local-file";
+  source: "env" | "encrypted-wallet";
 }
 
-export interface ResolveCliSignerOptions {
-  configPath?: string;
+export interface ResolveCliWalletOptions {
+  walletPath?: string;
+  sessionSocketPath?: string;
+  sessionTokenPath?: string;
   envPrivateKey?: Hex;
 }
 
-export interface BuildCliMoneyOSConfigOptions
-  extends ResolveCliSignerOptions {
+export interface BuildCliMoneyOSConfigOptions extends ResolveCliWalletOptions {
   chainId?: number;
   requireSigner?: boolean;
 }
@@ -38,55 +38,30 @@ function resolveEnvPrivateKey(explicit?: Hex): Hex | undefined {
   return explicit ?? (process.env.MONEYOS_PRIVATE_KEY as Hex | undefined);
 }
 
-/**
- * Resolve the signer the CLI should use for "my wallet" operations.
- *
- * Precedence is deliberate:
- * 1. `MONEYOS_PRIVATE_KEY` env var for ephemeral agent/CI usage.
- * 2. Local file-backed config.
- */
-export async function loadCliSigner(
+function getWalletStore(
   config: CLIConfig,
-  options: ResolveCliSignerOptions = {},
-): Promise<ResolvedCliSigner> {
-  const envPrivateKey = resolveEnvPrivateKey(options.envPrivateKey);
-  if (envPrivateKey) {
-    const signer = privateKeyToManagedAccount(envPrivateKey);
-    return {
-      kind: "env",
-      signer,
-      address: signer.address,
-    };
-  }
+  options: ResolveCliWalletOptions = {},
+): FileEncryptedWalletStore {
+  return new FileEncryptedWalletStore(options.walletPath ?? getWalletPath(config));
+}
 
-  if (hasRemovedOnePasswordConfig(config)) {
-    throw new Error(getRemovedOnePasswordStorageMessage());
-  }
+function getSessionPath(options: ResolveCliWalletOptions = {}): string {
+  return options.sessionSocketPath ?? getSessionSocketPath();
+}
 
-  if (config.privateKey) {
-    const store = new FileKeyStore({
-      configPath: options.configPath ?? getConfigPath(),
-    });
-    const signer = await store.loadSigner();
-    return {
-      kind: "file",
-      signer,
-      address: signer.address,
-    };
-  }
-
-  throw new Error("No wallet configured. Run `moneyos init`.");
+function getTokenPath(options: ResolveCliWalletOptions = {}): string {
+  return options.sessionTokenPath ?? getSessionTokenPath();
 }
 
 /**
  * Resolve the address the CLI should use for read-only "my wallet" commands.
  *
- * This prefers cheap local metadata over signer loading so read-only balance
- * checks stay lightweight.
+ * This prefers cheap wallet metadata over any signing path so read-only
+ * balance checks do not require an unlocked session.
  */
 export async function loadCliAddress(
   config: CLIConfig,
-  options: ResolveCliSignerOptions = {},
+  options: ResolveCliWalletOptions = {},
 ): Promise<ResolvedCliAddress> {
   const envPrivateKey = resolveEnvPrivateKey(options.envPrivateKey);
   if (envPrivateKey) {
@@ -102,19 +77,18 @@ export async function loadCliAddress(
     throw new Error(getRemovedOnePasswordStorageMessage());
   }
 
-  if (config.privateKey) {
-    const store = new FileKeyStore({
-      configPath: options.configPath ?? getConfigPath(),
-    });
-    const metadata = await store.metadata();
-    if (!metadata.address) {
-      throw new Error("No wallet configured. Run `moneyos init`.");
-    }
+  const wallet = getWalletStore(config, options);
+  const metadata = await wallet.metadata();
+  if (metadata?.address) {
     return {
-      kind: "file",
+      kind: "wallet-file",
       address: metadata.address,
-      source: "local-file",
+      source: "encrypted-wallet",
     };
+  }
+
+  if (hasLegacyPlaintextWalletConfig(config)) {
+    throw new Error(getLegacyPlaintextWalletStorageMessage());
   }
 
   throw new Error("No wallet configured. Run `moneyos init`.");
@@ -133,9 +107,42 @@ export async function buildCliMoneyOSConfig(
     return moneyosConfig;
   }
 
-  const { signer } = await loadCliSigner(config, options);
-  return {
-    ...moneyosConfig,
-    signer,
-  };
+  const envPrivateKey = resolveEnvPrivateKey(options.envPrivateKey);
+  if (envPrivateKey) {
+    return {
+      ...moneyosConfig,
+      signer: privateKeyToManagedAccount(envPrivateKey),
+    };
+  }
+
+  if (hasRemovedOnePasswordConfig(config)) {
+    throw new Error(getRemovedOnePasswordStorageMessage());
+  }
+
+  const socketPath = getSessionPath(options);
+  const tokenPath = getTokenPath(options);
+  const session = await getSessionStatus(socketPath, tokenPath);
+  if (session) {
+    return {
+      ...moneyosConfig,
+      execute: new SessionExecutionClient({
+        socketPath,
+        tokenPath,
+        address: session.address,
+      }),
+    };
+  }
+
+  const wallet = getWalletStore(config, options);
+  if (wallet.exists()) {
+    throw new Error(
+      "Wallet is locked. Run `moneyos auth unlock` locally before using write commands.",
+    );
+  }
+
+  if (hasLegacyPlaintextWalletConfig(config)) {
+    throw new Error(getLegacyPlaintextWalletStorageMessage());
+  }
+
+  throw new Error("No wallet configured. Run `moneyos init`.");
 }

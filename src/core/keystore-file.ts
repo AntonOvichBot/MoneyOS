@@ -7,25 +7,22 @@ import type { KeyStore, KeyStoreMetadata } from "@moneyos/core";
 import { privateKeyToManagedAccount } from "./signer.js";
 
 /**
- * FileKeyStore — the default KeyStore backend.
+ * FileKeyStore — raw-key JSON helper for library consumers.
  *
- * Reads a raw private key from a JSON config file on disk (by default
- * `~/.moneyos/config.json`) and derives a viem `Account` from it. This
- * preserves the current CLI storage model behind the `KeyStore` interface,
- * so existing users with a `privateKey` field in their config keep working
- * unchanged.
+ * Reads a raw private key from a JSON file on disk (by default
+ * `~/.moneyos/config.json`) and derives a viem `Account` from it.
  *
- * The read path is deliberately self-contained: this module does not import
- * from `src/cli/` so that library consumers can use `FileKeyStore` without
- * pulling in the CLI package. If the config schema grows, the CLI and the
- * keystore can share a low-level helper, but neither owns the other.
+ * MoneyOS CLI no longer uses plaintext `config.json` wallet storage as its
+ * default path. The CLI now uses an encrypted wallet file plus a local unlock
+ * session. This helper remains available for advanced SDK use cases and
+ * explicit raw-key compatibility paths outside the default CLI flow.
  */
 
 export interface FileKeyStoreOptions {
   /**
    * Absolute path to the JSON config file that holds the private key.
-   * Defaults to `~/.moneyos/config.json` to match the CLI's storage
-   * location.
+   * Defaults to `~/.moneyos/config.json` for compatibility with earlier
+   * raw-key layouts and explicit SDK usage.
    */
   configPath?: string;
 }

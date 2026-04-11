@@ -1,7 +1,7 @@
 # MoneyOS
 
 MoneyOS is an open source programmable money SDK and CLI for developers and AI
-agents. The repo includes balance, send, swap, runtime-composition, keystore,
+agents. The repo includes balance, send, swap, runtime-composition, wallet,
 and executor code, with the project currently centered on Arbitrum.
 
 The project is still early. Package boundaries and some APIs are still settling,
@@ -20,18 +20,24 @@ Available commands:
 
 ```bash
 moneyos init [--key 0x...]
+moneyos auth unlock
+moneyos auth lock
+moneyos auth status
+moneyos backup export [--out ./wallet-backup.json]
+moneyos backup restore <path>
+moneyos backup status
 moneyos balance <token> [--address 0x...]
 moneyos send <amount> <token> <to>
 moneyos swap <amount> <tokenIn> <tokenOut>
-moneyos keystore status
 ```
 
 Example:
 
 ```bash
 moneyos init
+moneyos auth unlock
 moneyos balance USDC
-moneyos keystore status
+moneyos backup status
 ```
 
 ## SDK
@@ -59,25 +65,66 @@ plug in.
 
 What is landed in code today:
 
-- The CLI supports a local file-backed wallet stored in `~/.moneyos/config.json`
-- `MONEYOS_PRIVATE_KEY` can override the local file for ephemeral CI or agent runs
-- Normal wallet commands resolve their signer through one shared path instead of
-  each command reading `config.privateKey` directly
+- The CLI stores the root wallet in an encrypted local wallet file at `~/.moneyos/wallet.json`
+- `~/.moneyos/config.json` now stores only non-secret settings such as chain and RPC configuration
+- `MONEYOS_PRIVATE_KEY` remains an explicit override for ephemeral CI or agent runs
+- `moneyos auth unlock` opens a short-lived local session for write commands
+- `moneyos backup export|restore|status` manages encrypted wallet backups
+- Normal wallet commands resolve their write path through one shared session-aware flow
 - Local EOA signers use viem's nonce manager, so back-to-back live transactions
   use pending-aware nonce sequencing
 
-What is not shipped yet:
+What is intentionally not shipped yet:
 
-- encrypted local wallet storage
-- password/passphrase unlock flow
-- session cache / lock-unlock commands
-- password-manager unlock helpers
+- password-manager integrations
+- unlock-helper plugins
+- delegated agent spending limits
+- smart-account policy sessions
 
-The old "wallet private key lives in 1Password" model has been removed from the
-repo. That is not the product direction for MoneyOS.
+Password managers are not wallet backends in MoneyOS. The current model is:
+local encrypted wallet, local human unlock, short-lived session, and encrypted
+wallet backup files.
 
 The design notes for the current and target wallet architecture live in
 [`docs/keystore.md`](docs/keystore.md).
+
+## Upgrade for older users
+
+If you used an older MoneyOS version that stored `privateKey` in
+`~/.moneyos/config.json`, the new CLI does not use that plaintext path at
+runtime anymore.
+
+Use `moneyos init` on the same machine to re-import that wallet into the new
+encrypted wallet file. MoneyOS will detect the old plaintext config, prompt you
+for a wallet password, write `~/.moneyos/wallet.json`, and create an encrypted
+backup file. After that, write commands use `moneyos auth unlock`.
+
+If you still have a raw private key from elsewhere, you can also import it
+directly with:
+
+```bash
+moneyos init --key 0x...
+```
+
+## Threat model
+
+What this wallet model is meant to protect against:
+
+- accidental plaintext private-key storage in `config.json`
+- casual disk access while the wallet is locked
+- copying encrypted wallet backups without also knowing the wallet password
+- sending the wallet password through normal AI chat flows
+
+What it does not protect against:
+
+- malware already running as your user while the wallet is unlocked
+- a compromised machine that can inspect local process memory
+- someone who knows your wallet password
+- loss of both the encrypted wallet and its password
+
+The intended operating model is simple: keep the wallet encrypted locally,
+unlock it locally when you want to write, keep sessions short, and save the
+wallet password in your password manager of choice yourself.
 
 ## Supported chains and tokens
 
@@ -106,7 +153,7 @@ What we have verified locally on the current code:
 - typechecks pass
 - workspace builds pass
 - the built CLI runs
-- `moneyos keystore status` works against a local wallet config
+- encrypted wallet creation, unlock/session, backup export, and backup restore are covered by tests
 - read-only balance checks work
 - native ETH send works on Arbitrum
 - ERC-20 sends work on Arbitrum (`USDC` and `RYZE`)
@@ -116,7 +163,7 @@ What we have verified locally on the current code:
 What still needs more hands-on validation:
 
 - Particle executor against real infrastructure
-- future encrypted-wallet and unlock/session flow after it exists
+- more live usage of the encrypted-wallet/auth/backup flow in a real terminal
 
 ## Development
 

@@ -1,4 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import type { Address, Hex } from "viem";
@@ -9,14 +10,19 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 /**
  * Local CLI configuration persisted at `~/.moneyos/config.json`.
  *
- * Current landed storage is a local file-backed private key at the CLI layer.
- * The longer-term encrypted-wallet design is intentionally not represented in
- * this schema yet.
+ * Only non-secret settings should be persisted here. Wallet secrets now live
+ * in the encrypted wallet file, while `privateKey` remains as a legacy-only
+ * field so older configs can be detected and upgraded through `moneyos init`.
  */
 export interface CLIConfig {
   chainId?: number;
   rpcUrl?: string;
-  /** Local file-backed private key used by the current landed CLI path. */
+  walletPath?: string;
+  backupDir?: string;
+  /**
+   * Legacy plaintext wallet field from earlier MoneyOS versions. This should
+   * never be written by the current CLI.
+   */
   privateKey?: Hex;
 }
 
@@ -97,15 +103,53 @@ export function saveConfig(
   config: CLIConfig,
   path: string = CONFIG_FILE,
 ): void {
+  const safeConfig = { ...config };
+  delete safeConfig.privateKey;
   const dir = dirname(path);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
-  writeFileSync(path, JSON.stringify(config, null, 2), {
+  writeFileSync(path, JSON.stringify(safeConfig, null, 2), {
     mode: 0o600,
   });
 }
 
 export function getConfigPath(): string {
   return CONFIG_FILE;
+}
+
+export function getMoneyOSDir(): string {
+  return CONFIG_DIR;
+}
+
+export function getWalletPath(config?: CLIConfig): string {
+  return config?.walletPath ?? join(CONFIG_DIR, "wallet.json");
+}
+
+export function getBackupDir(config?: CLIConfig): string {
+  return config?.backupDir ?? join(CONFIG_DIR, "backups");
+}
+
+export function getSessionSocketPath(): string {
+  if (process.platform === "win32") {
+    const suffix = createHash("sha256")
+      .update(CONFIG_DIR)
+      .digest("hex")
+      .slice(0, 16);
+    return `\\\\.\\pipe\\moneyos-session-${suffix}`;
+  }
+
+  return join(CONFIG_DIR, "session.sock");
+}
+
+export function getSessionTokenPath(): string {
+  return join(CONFIG_DIR, "session.token");
+}
+
+export function hasLegacyPlaintextWalletConfig(config: CLIConfig): boolean {
+  return typeof config.privateKey === "string";
+}
+
+export function getLegacyPlaintextWalletStorageMessage(): string {
+  return "Plaintext local wallet configs are no longer used for runtime access. Run `moneyos init` locally to encrypt your wallet into the new MoneyOS wallet file.";
 }
