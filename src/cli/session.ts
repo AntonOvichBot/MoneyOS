@@ -64,6 +64,8 @@ type SessionResponse =
   | { id: string; ok: false; error: string };
 
 const SESSION_CONTROL_TIMEOUT_MS = 750;
+// Intentionally much longer than control operations: on-chain submission does
+// real RPC work, and PR #12 fixed a live timeout-after-broadcast bug here.
 const SESSION_SEND_TIMEOUT_MS = 60_000;
 const MAX_MESSAGE_BYTES = 32 * 1024;
 const SECURE_DIR_MODE = 0o700;

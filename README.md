@@ -19,17 +19,20 @@ but the repo is structured so each major surface can evolve independently.
 Available commands:
 
 ```bash
-moneyos init [--key 0x...]
+moneyos init [--key 0x...] [--force] [--chain 42161] [--rpc https://...]
 moneyos auth unlock
 moneyos auth lock
 moneyos auth status
-moneyos backup export [--out ./wallet-backup.json]
-moneyos backup restore <path>
+moneyos backup export [--out ./wallet-backup.json] [--force]
+moneyos backup restore <path> [--force]
 moneyos backup status
+moneyos keystore status
 moneyos balance <token> [--address 0x...]
 moneyos send <amount> <token> <to>
 moneyos swap <amount> <tokenIn> <tokenOut>
 ```
+
+For the full command surface and flag details, run `moneyos --help`.
 
 Example:
 
@@ -60,6 +63,13 @@ console.log(tx.hash);
 The runtime seam is intentionally small. `createMoneyOS` can also take injected
 `execute`, `read`, and `assets` implementations, which is how external packages
 plug in.
+
+## Published npm package
+
+The current `main` branch is ahead of the published npm package. The encrypted
+wallet flow described below requires cloning this repo and building from
+source. `npm install moneyos` currently gives you an older pre-encrypted-wallet
+release.
 
 ## Current wallet model
 
@@ -122,6 +132,13 @@ What it does not protect against:
 - someone who knows your wallet password
 - loss of both the encrypted wallet and its password
 
+## Known operational limitations
+
+- If a session-backed `send` or `swap` returns a timeout or disconnect error,
+  do not assume nothing was broadcast. Verify on-chain before retrying.
+- PR #12 fixed the common 750ms false-timeout path, but client-disconnect
+  detection and request idempotency are still follow-up work.
+
 The intended operating model is simple: keep the wallet encrypted locally,
 unlock it locally when you want to write, keep sessions short, and save the
 wallet password in your password manager of choice yourself.
@@ -153,15 +170,18 @@ What we have verified locally on the current code:
 - typechecks pass
 - workspace builds pass
 - the built CLI runs
-- encrypted wallet creation, unlock/session, backup export, and backup restore are covered by tests
+- encrypted wallet creation, unlock/session, backup export, and backup restore protections are covered by tests
 - read-only balance checks work
-- native ETH send works on Arbitrum
-- ERC-20 sends work on Arbitrum (`USDC` and `RYZE`)
-- swaps work on Arbitrum (`USDC -> RYZE` and `USDC -> ETH`)
-- repeated live transactions work without nonce reuse after the EOA nonce fix
+- the session-backed send path has a real slow-daemon regression test after PR #12
+- repeated live transactions worked before wallet v1 landed, which validated the
+  nonce-manager fix but should not be treated as end-to-end validation of the
+  current session-backed wallet flow
 
 What still needs more hands-on validation:
 
+- live session-backed ETH send
+- live session-backed ERC-20 send
+- live session-backed swap
 - Particle executor against real infrastructure
 - more live usage of the encrypted-wallet/auth/backup flow in a real terminal
 
