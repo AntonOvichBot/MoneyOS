@@ -2,6 +2,15 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## 0.3.1 - 2026-04-11
+
+### Fixed
+
+- `moneyos --version` now reports the package version from `package.json`
+  instead of a stale hardcoded string
+- added regression coverage to keep the CLI version output aligned with the
+  published package version
+
 ## 0.3.0 - 2026-04-11
 
 ### Added
