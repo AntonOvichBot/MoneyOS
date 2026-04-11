@@ -2,6 +2,13 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## 0.3.2 - 2026-04-11
+
+### Changed
+
+- corrected the README's published-package section so the npm package page no
+  longer claims `moneyos` is still on a pre-encrypted-wallet release
+
 ## 0.3.1 - 2026-04-11
 
 ### Fixed

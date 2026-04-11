@@ -66,10 +66,10 @@ plug in.
 
 ## Published npm package
 
-The current `main` branch is ahead of the published npm package. The encrypted
-wallet flow described below requires cloning this repo and building from
-source. `npm install moneyos` currently gives you an older pre-encrypted-wallet
-release.
+`moneyos` is published on npm. `npm install moneyos` and `npx moneyos` give
+you the latest tagged release, not unreleased commits on `main`. If you want
+work that has not shipped in a tagged release yet, clone the repo and build
+from source.
 
 ## Current wallet model
 
