@@ -2,7 +2,7 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
-## Unreleased
+## 0.3.3 - 2026-04-11
 
 ### Removed
 
