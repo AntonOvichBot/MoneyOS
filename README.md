@@ -12,7 +12,6 @@ but the repo is structured so each major surface can evolve independently.
 - `moneyos`: the root SDK + CLI package
 - `@moneyos/core`: runtime interfaces, shared types, chain/token registries
 - `@moneyos/tool-swap`: swap execution tool and provider surface
-- `@moneyos/executor-particle`: Particle AA smart-account executor
 
 ## CLI
 
@@ -186,7 +185,6 @@ What still needs more hands-on validation:
 - live session-backed ETH send
 - live session-backed ERC-20 send
 - live session-backed swap
-- Particle executor against real infrastructure
 - more live usage of the encrypted-wallet/auth/backup flow in a real terminal
 
 ## Development
@@ -195,7 +193,6 @@ What still needs more hands-on validation:
 npm install
 npm run build:core
 npm run build:tool-swap
-npm run build:executor-particle
 npm run typecheck
 npm test
 npm run lint

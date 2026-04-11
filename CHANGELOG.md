@@ -2,6 +2,14 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## Unreleased
+
+### Removed
+
+- removed the unused Particle executor workspace, smoke script, and supporting
+  docs/build references so the repo matches the current local-wallet-first
+  product surface
+
 ## 0.3.2 - 2026-04-11
 
 ### Changed

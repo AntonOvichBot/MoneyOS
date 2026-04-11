@@ -10,12 +10,11 @@ import { MoneyOS } from "./client.js";
  *   await moneyos.send("USDC", "0x...", "10");
  * ```
  *
- * Custom execution (e.g. gasless smart-account):
+ * Custom execution:
  * ```ts
- *   import { ParticleExecutor } from "@moneyos/executor-particle";
  *   const moneyos = createMoneyOS({
  *     chainId: 42161,
- *     execute: new ParticleExecutor({ ... }),
+ *     execute: myExecutionClient,
  *   });
  *   // moneyos.send / moneyos.swap transparently use the injected executor
  * ```

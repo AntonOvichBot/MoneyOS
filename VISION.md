@@ -70,18 +70,11 @@ The same primitives work across every surface:
 
 One mental model, multiple surfaces.
 
-## Gasless
-
-Gasless transactions are core to the experience, not optional. Particle Network provides the account abstraction and paymaster layer. Users should never need to buy ETH for gas.
-
-The gasless sponsorship is funded by RYZE — swap/send fees buy back RYZE, which funds the paymaster. The protocol feeds itself.
-
 ## RYZE Token
 
 MoneyOS is open source by Aryze. RYZE is woven into the system naturally:
 
 - Default fee token for premium features
-- Gasless transaction sponsorship (fees → RYZE buyback → paymaster funding)
 - Default trading pair in swaps
 - RPC infrastructure funding
 
@@ -114,7 +107,7 @@ The npm package is the wedge. Not a landing page, not a pitch deck.
 
 - **Chain**: Arbitrum first (fast, cheap, RYZE is there)
 - **On-chain reads**: Viem
-- **Wallet/signing**: Viem (v1), Particle Network (v2 — gasless + social login)
+- **Wallet/signing**: Viem
 - **Swaps**: Odos (default provider, others pluggable)
 - **Language**: TypeScript
 - **Package**: `npm install moneyos`
@@ -130,7 +123,6 @@ The npm package is the wedge. Not a landing page, not a pitch deck.
 
 ## What's next
 
-- Particle Network integration (gasless + social login)
 - Tool/provider plugin architecture
 - Error handling (human-readable messages)
 - More chains, more tokens

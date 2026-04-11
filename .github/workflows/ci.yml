@@ -31,14 +31,12 @@ jobs:
           npm run typecheck
           npm run typecheck:core
           npm run typecheck:tool-swap
-          npm run typecheck:executor-particle
 
       - name: Lint
         run: |
           npm run lint
           npm run lint:core
           npm run lint:tool-swap
-          npm run lint:executor-particle
 
       - name: Test
         run: npm test
@@ -47,4 +45,3 @@ jobs:
         run: |
           npm run build
           npm run build:tool-swap
-          npm run build:executor-particle

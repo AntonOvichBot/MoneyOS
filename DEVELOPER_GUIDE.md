@@ -25,12 +25,6 @@ packages/
 │       ├── providers/
 │       │   └── odos.ts        — Odos DEX provider
 │       └── index.ts
-├── executor-particle/         — @moneyos/executor-particle: Particle AA smart-account executor
-│   ├── src/
-│   │   ├── executor.ts        — createParticleExecutor async factory, ParticleExecutor class
-│   │   └── index.ts
-│   └── test/
-│       └── executor.test.ts   — mocks @particle-network/aa, tests v1 locks + ExecutionClient contract
 src/
 ├── core/
 │   ├── types.ts         — re-exports from @moneyos/core
@@ -73,7 +67,6 @@ src/
 |---------|-------------|-------------|
 | `@moneyos/core` | Runtime interfaces, shared types, token/chain registries | viem (peer) |
 | `@moneyos/tool-swap` | Swap tool with pluggable providers | @moneyos/core, viem (peer) |
-| `@moneyos/executor-particle` | Particle Network smart-account executor (gasless on Arbitrum) | @moneyos/core, viem (peer); @particle-network/aa |
 | `moneyos` | SDK + CLI — composes core + implementations | @moneyos/core, viem, commander |
 
 Dependency direction:
@@ -81,81 +74,7 @@ Dependency direction:
 ```text
 moneyos ──┐
           ├──► @moneyos/core ◄── @moneyos/tool-swap
-          │
-          └──► @moneyos/executor-particle ──► @moneyos/core
 ```
-
-No vendor SDK types are exposed through `@moneyos/core`. Particle-specific
-concepts stay inside `@moneyos/executor-particle`.
-
-## Injecting a custom executor
-
-```ts
-import { createMoneyOS } from "moneyos";
-import { createParticleExecutor } from "@moneyos/executor-particle";
-
-const execute = await createParticleExecutor({
-  chainId: 42161,
-  projectId: "...",
-  clientKey: "...",
-  appId: "...",
-  ownerPrivateKey: "0x...",
-});
-
-const moneyos = createMoneyOS({ chainId: 42161, execute });
-await moneyos.send("USDC", "0x...", "1");
-```
-
-`createParticleExecutor` is async because Particle resolves the smart-account
-address asynchronously. After the factory settles, the returned executor has a
-sync `getAddress()` that satisfies the core `ExecutionClient` contract.
-
-## Particle executor v1 locks
-
-- Arbitrum One only (`chainId: 42161`)
-- `SIMPLE` account contract, version `2.0.0`
-- `gasMode: "gasless"` only
-- owner is a local private key
-- no batching, no session keys, no AccountSpec in core
-
-## Smoke test: `scripts/smoke-particle.ts`
-
-End-to-end validation of the Particle executor against Arbitrum One.
-
-> Arbitrum mainnet only. The executor is hard-locked to chainId 42161.
-
-Dry-run first:
-
-```bash
-PARTICLE_PROJECT_ID=... \
-PARTICLE_CLIENT_KEY=... \
-PARTICLE_APP_ID=... \
-MONEYOS_PRIVATE_KEY=0x... \
-PARTICLE_SMOKE_SKIP_SEND=1 \
-  npm run smoke:particle
-```
-
-Then a tiny live send:
-
-```bash
-PARTICLE_PROJECT_ID=... \
-PARTICLE_CLIENT_KEY=... \
-PARTICLE_APP_ID=... \
-MONEYOS_PRIVATE_KEY=0x... \
-PARTICLE_SMOKE_TO=0x... \
-PARTICLE_SMOKE_TOKEN=ETH \
-PARTICLE_SMOKE_AMOUNT=0.00001 \
-  npm run smoke:particle
-```
-
-The smart account, not the owner EOA, must hold the token being sent. Gas is
-sponsored by Particle's paymaster.
-
-Exit codes:
-
-- `0` success
-- `1` runtime failure
-- `2` missing required environment variable
 
 ## Build
 
@@ -164,7 +83,6 @@ npm install
 npm run build:core
 npm run build
 npm run build:tool-swap
-npm run build:executor-particle
 npm run typecheck
 npm run test
 ```
@@ -219,20 +137,19 @@ For deeper notes, see [`docs/keystore.md`](docs/keystore.md).
 - shared wallet resolution lives in `src/cli/wallet.ts`
 - SDK surface stays storage-agnostic via `signer` / `execute`
 - current product direction is encrypted local wallet + unlock/session + encrypted backups
-- EOA is the canonical identity; smart accounts are opt-in execution mode
+- EOA is the canonical identity
 - runtime shape stays intentionally small: read, execute, assets, config
 - `createMoneyOS` accepts injected runtime parts
-- `@moneyos/executor-particle` provides gasless Arbitrum execution today
 
 ## Publishing
 
 - package name: `moneyos`
-- workspace packages: `@moneyos/core`, `@moneyos/tool-swap`, `@moneyos/executor-particle`
+- workspace packages: `@moneyos/core`, `@moneyos/tool-swap`
 - before publish: verify registry ownership, replace `workspace:*` runtime
   dependencies with publish-safe version ranges, and confirm packed tarballs
   include built artifacts
 - test before publish: `npm pack --dry-run`, install tarball, verify CLI works
-- bump version in both `package.json` and `src/cli/version.ts`
+- bump version in `package.json`
 
 ## Rules
 
