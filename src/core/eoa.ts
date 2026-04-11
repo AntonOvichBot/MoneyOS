@@ -90,6 +90,7 @@ export class EOAExecutor implements ExecutionClient {
   readonly mode = "eoa" as const;
   private signer: Account;
   private walletClients: Map<number, WalletClient> = new Map();
+  private publicClients: Map<number, PublicClient> = new Map();
   private config: RuntimeConfig;
 
   constructor(signer: Account, config: RuntimeConfig) {
@@ -131,6 +132,25 @@ export class EOAExecutor implements ExecutionClient {
     return client;
   }
 
+  private getPublicClient(chainId: number): PublicClient {
+    let client = this.publicClients.get(chainId);
+    if (!client) {
+      const chain = getViemChain(chainId);
+      const chainInfo = getChain(chainId);
+      const rpcUrl =
+        chainId === this.config.defaultChainId
+          ? this.config.rpcUrl
+          : undefined;
+
+      client = createPublicClient({
+        chain,
+        transport: http(rpcUrl ?? chainInfo?.rpcUrl),
+      });
+      this.publicClients.set(chainId, client);
+    }
+    return client;
+  }
+
   getAddress(): Address {
     return this.signer.address;
   }
@@ -144,6 +164,27 @@ export class EOAExecutor implements ExecutionClient {
       value: call.value ?? 0n,
       chain: walletClient.chain,
     });
+
+    // Wait for inclusion before resolving. Returning on broadcast makes
+    // sequenced operations like "approve then swap" unsafe: the next
+    // call's preflight (eth_estimateGas / eth_call) runs against the
+    // latest mined block, so a still-pending approve is invisible and
+    // the swap reverts at simulation time. The same broadcast-only
+    // resolution also lets viem's nonce manager drift past the chain
+    // when a sequenced call fails preflight, leaving the executor stuck
+    // submitting nonces the chain has not yet reached.
+    //
+    // For an interactive CLI, slower is acceptable; ambiguous transaction
+    // state is not.
+    const publicClient = this.getPublicClient(call.chainId);
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+    if (receipt.status !== "success") {
+      throw new Error(
+        `Transaction ${hash} reverted on chain ${call.chainId} (block ${receipt.blockNumber}).`,
+      );
+    }
+
     return { hash, chainId: call.chainId };
   }
 
