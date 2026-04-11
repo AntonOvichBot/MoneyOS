@@ -98,23 +98,27 @@ wallet backup files.
 The design notes for the current and target wallet architecture live in
 [`docs/keystore.md`](docs/keystore.md).
 
-## Upgrade for older users
+## Importing an existing wallet
 
-If you used an older MoneyOS version that stored `privateKey` in
-`~/.moneyos/config.json`, the new CLI does not use that plaintext path at
-runtime anymore.
-
-Use `moneyos init` on the same machine to re-import that wallet into the new
-encrypted wallet file. MoneyOS will detect the old plaintext config, prompt you
-for a wallet password, write `~/.moneyos/wallet.json`, and create an encrypted
-backup file. After that, write commands use `moneyos auth unlock`.
-
-If you still have a raw private key from elsewhere, you can also import it
-directly with:
+If you already have a raw private key, import it with `init`:
 
 ```bash
 moneyos init --key 0x...
 ```
+
+MoneyOS prompts you for a wallet password, encrypts the key into
+`~/.moneyos/wallet.json`, and writes an initial encrypted backup under
+`~/.moneyos/backups/`. After that, use `moneyos auth unlock` before any
+write command.
+
+The CLI only supports raw hex private-key import today. Seed phrases,
+keystore v3 JSON files, and hardware-wallet derivation are not implemented.
+If your wallet currently lives in one of those formats, derive the raw hex
+with another tool first.
+
+If you have a legacy `~/.moneyos/config.json` with a plaintext `privateKey`
+field from a pre-encrypted-wallet version of the CLI, `moneyos init` with no
+flags will detect and import that key automatically.
 
 ## Threat model
 
