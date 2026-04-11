@@ -3,6 +3,7 @@ import {
   createDecipheriv,
   randomBytes,
   scryptSync,
+  timingSafeEqual,
 } from "node:crypto";
 import {
   chmodSync,
@@ -14,6 +15,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -216,6 +218,19 @@ function deriveKey(
   }) as Buffer;
 }
 
+function walletAad(kdf: EncryptedWalletKdfConfig): Buffer {
+  return Buffer.from(
+    JSON.stringify({
+      name: kdf.name,
+      N: kdf.N,
+      r: kdf.r,
+      p: kdf.p,
+      keyLength: kdf.keyLength,
+    }),
+    "utf8",
+  );
+}
+
 function writeFileAtomicSecure(path: string, contents: string): void {
   ensureParentDir(path);
   assertSecureFileMode(path, "Wallet file");
@@ -225,12 +240,24 @@ function writeFileAtomicSecure(path: string, contents: string): void {
     `.${basename(path)}.${randomBytes(6).toString("hex")}.tmp`,
   );
   const fd = openSync(tmpPath, "wx", SECURE_FILE_MODE);
+  let writeError: unknown;
 
   try {
     writeSync(fd, contents);
     fsyncSync(fd);
+  } catch (error) {
+    writeError = error;
   } finally {
     closeSync(fd);
+  }
+
+  if (writeError) {
+    try {
+      unlinkSync(tmpPath);
+    } catch {
+      // best effort cleanup
+    }
+    throw writeError;
   }
 
   renameSync(tmpPath, path);
@@ -247,6 +274,7 @@ async function encryptWallet(params: {
   const nonce = randomBytes(12);
   const key = deriveKey(params.passphrase, salt, DEFAULT_KDF);
   const cipher = createCipheriv("aes-256-gcm", key, nonce);
+  cipher.setAAD(walletAad(DEFAULT_KDF));
   const plaintext = Buffer.from(
     JSON.stringify({ privateKey: params.privateKey }),
     "utf8",
@@ -290,6 +318,7 @@ async function decryptWalletFile(
     const ciphertext = Buffer.from(wallet.crypto.ciphertext, "base64");
     const key = deriveKey(passphrase, salt, wallet.kdf);
     const decipher = createDecipheriv("aes-256-gcm", key, nonce);
+    decipher.setAAD(walletAad(wallet.kdf));
     decipher.setAuthTag(authTag);
     const plaintext = Buffer.concat([
       decipher.update(ciphertext),
@@ -304,6 +333,16 @@ async function decryptWalletFile(
     if (derivedAddress.toLowerCase() !== wallet.address.toLowerCase()) {
       throw new Error("wallet address metadata mismatch");
     }
+
+    const expected = Buffer.from(wallet.address.toLowerCase(), "utf8");
+    const actual = Buffer.from(derivedAddress.toLowerCase(), "utf8");
+    if (
+      expected.length !== actual.length ||
+      !timingSafeEqual(expected, actual)
+    ) {
+      throw new Error("wallet address metadata mismatch");
+    }
+
     return privateKey;
   } catch {
     throw new Error("Invalid password or corrupted wallet.");

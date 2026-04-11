@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -67,6 +67,8 @@ const DEFAULT_TIMEOUT_MS = 750;
 const MAX_MESSAGE_BYTES = 32 * 1024;
 const SECURE_DIR_MODE = 0o700;
 const SECURE_FILE_MODE = 0o600;
+const SERVER_SOCKET_TIMEOUT_MS = 5000;
+const SESSION_SHUTDOWN_TIMEOUT_MS = 2000;
 
 function isWindowsPipe(path: string): boolean {
   return path.startsWith("\\\\.\\pipe\\");
@@ -113,6 +115,37 @@ function writeSecureToken(tokenPath: string, token: string): void {
   ensureSecureParent(tokenPath);
   writeFileSync(tokenPath, `${token}\n`, { mode: SECURE_FILE_MODE });
   chmodSync(tokenPath, SECURE_FILE_MODE);
+}
+
+function sessionFilesGone(socketPath: string, tokenPath: string): boolean {
+  const tokenMissing = !existsSync(tokenPath);
+  const socketMissing = isWindowsPipe(socketPath) ? true : !existsSync(socketPath);
+  return tokenMissing && socketMissing;
+}
+
+async function waitForSessionShutdown(
+  socketPath: string,
+  tokenPath: string,
+  timeoutMs: number = SESSION_SHUTDOWN_TIMEOUT_MS,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (!sessionFilesGone(socketPath, tokenPath)) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error(
+        "Timed out waiting for the previous MoneyOS session to shut down cleanly.",
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+function tokensMatch(expectedToken: string, receivedToken: string): boolean {
+  const expected = Buffer.from(expectedToken, "utf8");
+  const received = Buffer.from(receivedToken, "utf8");
+  return (
+    expected.length === received.length &&
+    timingSafeEqual(expected, received)
+  );
 }
 
 function readLine(socket: net.Socket): Promise<string> {
@@ -342,6 +375,9 @@ export async function startSessionServer(
 
   const server = net.createServer((socket) => {
     let buffer = "";
+    socket.setTimeout(SERVER_SOCKET_TIMEOUT_MS, () => {
+      socket.destroy();
+    });
 
     socket.on("data", async (chunk) => {
       buffer += chunk.toString("utf8");
@@ -385,7 +421,7 @@ export async function startSessionServer(
       };
 
       try {
-        if (request.token !== token) {
+        if (!tokensMatch(token, String(request.token ?? ""))) {
           respond({
             id: request.id,
             ok: false,
@@ -473,7 +509,13 @@ export async function startDetachedSessionDaemon(
 ): Promise<SessionStatusResult> {
   const existing = await getSessionStatus(params.socketPath, params.tokenPath);
   if (existing) {
-    await lockSession(params.socketPath, params.tokenPath);
+    const locked = await lockSession(params.socketPath, params.tokenPath);
+    if (!locked) {
+      throw new Error(
+        "Failed to replace the existing MoneyOS session. Run `moneyos auth lock` and try again.",
+      );
+    }
+    await waitForSessionShutdown(params.socketPath, params.tokenPath);
   } else {
     removeFileIfPresent(params.socketPath);
     removeFileIfPresent(params.tokenPath);

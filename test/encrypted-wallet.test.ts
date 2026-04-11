@@ -75,6 +75,31 @@ describe("FileEncryptedWalletStore", () => {
     }
   });
 
+  it("rejects tampered KDF parameters", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-encrypted-wallet-"));
+    const walletPath = join(tmpDir, "wallet.json");
+    const store = new FileEncryptedWalletStore(walletPath);
+
+    try {
+      await store.save({
+        privateKey: TEST_PK,
+        passphrase: "secret passphrase",
+      });
+
+      const wallet = JSON.parse(readFileSync(walletPath, "utf8")) as {
+        kdf: { N: number; r: number; p: number; keyLength: number; name: string };
+      };
+      wallet.kdf.N = 1024;
+      writeFileSync(walletPath, JSON.stringify(wallet, null, 2), { mode: 0o600 });
+
+      await expect(store.decrypt("secret passphrase")).rejects.toThrow(
+        /invalid password or corrupted wallet/i,
+      );
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("refuses insecure wallet file permissions on unix", async () => {
     if (process.platform === "win32") {
       return;
@@ -131,6 +156,48 @@ describe("FileBackupProvider", () => {
 
       const restoredStore = new FileEncryptedWalletStore(restoredPath);
       expect(await restoredStore.decrypt("secret passphrase")).toBe(TEST_PK);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects restore with the wrong password without touching the existing wallet", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-backup-"));
+    const walletPath = join(tmpDir, "wallet.json");
+    const backupDir = join(tmpDir, "backups");
+    const restoredPath = join(tmpDir, "restored-wallet.json");
+    const sourceStore = new FileEncryptedWalletStore(walletPath);
+    const targetStore = new FileEncryptedWalletStore(restoredPath);
+
+    try {
+      await sourceStore.save({
+        privateKey: TEST_PK,
+        passphrase: "secret passphrase",
+      });
+      await targetStore.save({
+        privateKey: ALT_PK,
+        passphrase: "secret passphrase",
+      });
+
+      const provider = new FileBackupProvider({
+        walletPath,
+        backupDir,
+      });
+      const backupPath = await provider.exportWallet();
+
+      const restoreProvider = new FileBackupProvider({
+        walletPath: restoredPath,
+        backupDir,
+      });
+
+      await expect(
+        restoreProvider.restoreWallet(backupPath, {
+          passphrase: "wrong password",
+          allowOverwrite: true,
+        }),
+      ).rejects.toThrow(/invalid password or corrupted wallet/i);
+
+      expect(await targetStore.decrypt("secret passphrase")).toBe(ALT_PK);
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -199,6 +266,37 @@ describe("FileBackupProvider", () => {
       ).rejects.toThrow(/already exists/i);
 
       expect(await targetStore.decrypt("secret passphrase")).toBe(ALT_PK);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to overwrite an existing backup file on export without force", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-backup-"));
+    const walletPath = join(tmpDir, "wallet.json");
+    const backupDir = join(tmpDir, "backups");
+    const outPath = join(tmpDir, "manual-backup.json");
+    const store = new FileEncryptedWalletStore(walletPath);
+
+    try {
+      await store.save({
+        privateKey: TEST_PK,
+        passphrase: "secret passphrase",
+      });
+
+      const provider = new FileBackupProvider({
+        walletPath,
+        backupDir,
+      });
+      await provider.exportWallet({ outPath });
+
+      await expect(provider.exportWallet({ outPath })).rejects.toThrow(
+        /backup file already exists/i,
+      );
+
+      await expect(
+        provider.exportWallet({ outPath, allowOverwrite: true }),
+      ).resolves.toBe(outPath);
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

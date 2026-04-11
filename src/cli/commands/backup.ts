@@ -40,6 +40,7 @@ backupCommand
   .command("export")
   .description("Write a copy of the encrypted wallet backup")
   .option("-o, --out <path>", "Custom path for the backup file")
+  .option("--force", "Overwrite an existing backup file at --out")
   .action(async (options) => {
     const config = loadFileConfig();
     const provider = new FileBackupProvider({
@@ -50,6 +51,7 @@ backupCommand
     try {
       const targetPath = await provider.exportWallet({
         outPath: options.out,
+        allowOverwrite: Boolean(options.force),
       });
       console.log(`Backup exported to ${targetPath}`);
       console.log(

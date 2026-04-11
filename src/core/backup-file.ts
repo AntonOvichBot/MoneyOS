@@ -14,7 +14,7 @@ import {
 
 export interface BackupProvider {
   readonly kind: "file";
-  exportWallet(options?: { outPath?: string }): Promise<string>;
+  exportWallet(options?: { outPath?: string; allowOverwrite?: boolean }): Promise<string>;
   restoreWallet(
     fromPath: string,
     options: { passphrase: string; allowOverwrite?: boolean },
@@ -59,7 +59,9 @@ export class FileBackupProvider implements BackupProvider {
     );
   }
 
-  async exportWallet(options: { outPath?: string } = {}): Promise<string> {
+  async exportWallet(
+    options: { outPath?: string; allowOverwrite?: boolean } = {},
+  ): Promise<string> {
     if (options.outPath === "-") {
       throw new Error("Refusing to export an encrypted wallet backup to stdout.");
     }
@@ -67,6 +69,11 @@ export class FileBackupProvider implements BackupProvider {
     const targetPath = options.outPath
       ? resolve(options.outPath)
       : this.defaultBackupPath(wallet.address);
+    if (existsSync(targetPath) && !options.allowOverwrite) {
+      throw new Error(
+        "Backup file already exists. Re-run with `--force` if you really want to overwrite it.",
+      );
+    }
     await new FileEncryptedWalletStore(targetPath).restore(wallet);
     return targetPath;
   }
