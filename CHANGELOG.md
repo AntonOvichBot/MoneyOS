@@ -10,8 +10,6 @@ All notable changes to the repo's current `main` branch are documented here.
   `moneyos remove`, and `moneyos tools`
 - root CLI tool loading now uses a user-scoped registry and lazy-loads
   installed tool packages on demand instead of baking tool logic into root
-- `@moneyos/swap@0.2.0` now exports `moneyosCliTool`, making `moneyos swap`
-  mountable through the root CLI after install
 
 ### Fixed
 
@@ -29,13 +27,6 @@ All notable changes to the repo's current `main` branch are documented here.
   guard did not resolve npm's symlinked bin path
 
 ## 0.4.0 - 2026-04-12
-
-### Added
-
-- published `@moneyos/core@0.1.0` as the stable runtime contract package for
-  MoneyOS tools and custom runtimes
-- published `@moneyos/swap@0.1.0` as the canonical swap package with
-  `executeSwap`, `swapAction`, `createSwapTool`, and `OdosProvider`
 
 ### Changed
 

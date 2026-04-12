@@ -5,6 +5,7 @@ Canonical swap package for MoneyOS.
 This package owns the public swap execution surface, swap provider contract,
 the first provider implementation, `OdosProvider`, and the root CLI integration
 contract for `moneyos swap`.
+Release history lives in [`CHANGELOG.md`](https://github.com/1231chegites/moneyos/blob/main/packages/swap/CHANGELOG.md).
 
 ## Install
 

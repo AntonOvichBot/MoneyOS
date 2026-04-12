@@ -4,6 +4,7 @@ Bare-metal runtime contracts, shared types, and registries for MoneyOS.
 
 Use this package when you are building tools, providers, or custom runtimes.
 If you want the default SDK and CLI, install [`moneyos`](https://www.npmjs.com/package/moneyos).
+Release history lives in [`CHANGELOG.md`](https://github.com/1231chegites/moneyos/blob/main/packages/core/CHANGELOG.md).
 
 ## Install
 

@@ -11,16 +11,17 @@ export default defineConfig({
         "test/**",
         "dist/**",
         "coverage/**",
-        "src/cli/index.ts",
+        // Re-export/type-only facades are exercised through the concrete sources
+        // they expose; covering the shim files themselves adds no signal.
         "src/core/runtime.ts",
         "src/core/tokens.ts",
         "src/core/types.ts",
       ],
       thresholds: {
-        statements: 72.8,
-        branches: 78.5,
+        statements: 75,
+        branches: 80,
         functions: 86,
-        lines: 72.8,
+        lines: 75,
       },
     },
   },

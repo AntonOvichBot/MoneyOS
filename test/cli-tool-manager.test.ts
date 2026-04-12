@@ -619,6 +619,41 @@ describe("cli tool manager", () => {
     );
   });
 
+  it("createCommand failures are treated as broken installed tools", async () => {
+    const harness = registerHarness({
+      "@moneyos/swap": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+          onCreate: () => {
+            throw new Error("invalid tool wiring");
+          },
+        }),
+      },
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await manager.addTool("swap");
+
+    const program = createProgram({ toolManager: manager });
+
+    await expect(
+      program.parseAsync(["node", "moneyos", "swap", "1", "USDC", "ETH"]),
+    ).rejects.toThrow(
+      /Installed tool swap is broken: invalid tool wiring\. Run `moneyos add @moneyos\/swap` to repair it or `moneyos remove @moneyos\/swap` to uninstall it\./i,
+    );
+  });
+
   it("mounts nested command paths under shared parent groups", async () => {
     const onInvoke = vi.fn();
     const harness = registerHarness({

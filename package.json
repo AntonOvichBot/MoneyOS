@@ -22,6 +22,7 @@
     "build": "npm run build:core && tsup",
     "dev": "tsup --watch",
     "lint": "eslint src/",
+    "release:verify": "node scripts/release-verify.mjs",
     "typecheck": "tsc --noEmit",
     "test:prepare": "npm run build:core && npm run build:swap",
     "test": "npm run test:prepare && vitest run",
@@ -50,13 +51,14 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/1231CheGites/MoneyOS.git"
+    "url": "git+https://github.com/1231chegites/moneyos.git"
   },
   "engines": {
     "node": ">=18"
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "dependencies": {
     "commander": "^13.1.0",
