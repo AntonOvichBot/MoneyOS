@@ -2,6 +2,29 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## 0.3.4 - 2026-04-12
+
+### Added
+
+- added `moneyos auth change-password` so users can rotate the active wallet
+  password without changing wallet identity metadata; a successful rotation
+  also locks the current local session and leaves existing backup files as
+  old-password snapshots until a fresh export is created
+
+### Changed
+
+- added CLI-level regression coverage for legacy plaintext wallet migration,
+  `moneyos init --force`, malformed `moneyos init --key`, backup export
+  messaging, and wallet password rotation flows
+
+### Fixed
+
+- `moneyos backup export` now states plainly that exported backups use the same
+  wallet password as the active wallet and that restore requires that same
+  password
+- insecure backup export destinations now report destination-specific
+  permission errors instead of misleading wallet-path errors
+
 ## 0.3.3 - 2026-04-11
 
 ### Removed
