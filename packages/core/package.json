@@ -20,6 +20,18 @@
   "keywords": ["moneyos", "core", "runtime", "types"],
   "author": "Aryze",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1231CheGites/MoneyOS.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/1231CheGites/MoneyOS/tree/main/packages/core",
+  "bugs": {
+    "url": "https://github.com/1231CheGites/MoneyOS/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": ["dist"],
   "peerDependencies": {
     "viem": "^2.0.0"

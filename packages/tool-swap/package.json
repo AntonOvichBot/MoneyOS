@@ -20,9 +20,23 @@
   "keywords": ["moneyos", "swap", "dex", "odos"],
   "author": "Aryze",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1231CheGites/MoneyOS.git",
+    "directory": "packages/tool-swap"
+  },
+  "homepage": "https://github.com/1231CheGites/MoneyOS/tree/main/packages/tool-swap",
+  "bugs": {
+    "url": "https://github.com/1231CheGites/MoneyOS/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": ["dist"],
+  "dependencies": {
+    "@moneyos/core": "^0.1.0"
+  },
   "peerDependencies": {
-    "@moneyos/core": ">=0.1.0",
     "viem": "^2.0.0"
   }
 }
