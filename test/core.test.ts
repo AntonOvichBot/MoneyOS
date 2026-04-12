@@ -8,6 +8,7 @@ import {
   tokens,
   NATIVE_TOKEN_ADDRESS,
 } from "../src/index.js";
+import { resolveChainTransport } from "../src/core/chains.js";
 
 describe("chains", () => {
   it("default chain is Arbitrum", () => {
@@ -31,6 +32,26 @@ describe("chains", () => {
   it("Polygon native currency is POL", () => {
     const polygon = getChain(137)!;
     expect(polygon.nativeCurrency.symbol).toBe("POL");
+  });
+
+  it("resolveChainTransport uses a custom rpcUrl for the configured default chain", () => {
+    const transport = resolveChainTransport(42161, {
+      defaultChainId: 42161,
+      rpcUrl: "https://custom-arbitrum-rpc.example.com",
+    });
+
+    expect(transport.chain.id).toBe(42161);
+    expect(transport.rpcUrl).toBe("https://custom-arbitrum-rpc.example.com");
+  });
+
+  it("resolveChainTransport falls back to the registry rpcUrl for non-default chains", () => {
+    const transport = resolveChainTransport(1, {
+      defaultChainId: 42161,
+      rpcUrl: "https://custom-arbitrum-rpc.example.com",
+    });
+
+    expect(transport.chain.id).toBe(1);
+    expect(transport.rpcUrl).toBe(chains.ethereum.rpcUrl);
   });
 });
 

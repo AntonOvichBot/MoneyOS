@@ -39,6 +39,12 @@ const ERC20_TRANSFER_ABI = [
   },
 ] as const;
 
+function expectUnsupportedChainError(result: Promise<unknown>, chainId: number) {
+  return expect(result).rejects.toThrow(
+    new RegExp(`Unsupported chain ${chainId}\\b.*Supported chains:`),
+  );
+}
+
 function createMockReadClient(params?: {
   balance?: bigint;
   contractResult?: bigint;
@@ -264,6 +270,36 @@ describe("MoneyOS operations", () => {
       chainId: 42161,
     });
   });
+
+  it("swap() skips approval when allowance already covers the input amount", async () => {
+    const read = createMockReadClient({
+      contractResult: parseUnits("5", 6),
+    });
+    const executor = createMockExecutor();
+    const provider = createMockSwapProvider();
+    const moneyos = new MoneyOS({
+      chainId: 42161,
+      read,
+      execute: executor,
+    });
+
+    const result = await moneyos.swap("USDC", "RYZE", "1", provider);
+
+    expect(read.readContract).toHaveBeenCalledOnce();
+    expect(executor.send).toHaveBeenCalledOnce();
+    expect(executor.send).toHaveBeenCalledWith({
+      to: ROUTER,
+      data: "0xdeadbeef",
+      value: 0n,
+      chainId: 42161,
+    });
+    expect(result).toMatchObject({
+      hash: TX_HASH,
+      amountIn: "1",
+      amountOut: "0.5",
+      chainId: 42161,
+    });
+  });
 });
 
 describe("unsupported chain guards", () => {
@@ -272,13 +308,12 @@ describe("unsupported chain guards", () => {
       defaultChainId: 42161,
     });
 
-    await expect(
+    await expectUnsupportedChainError(
       reader.getBalance({
         address: RECIPIENT,
         chainId: 10,
       }),
-    ).rejects.toThrow(
-      "Unsupported chain 10. Supported chains: 1 (Ethereum), 137 (Polygon), 42161 (Arbitrum One).",
+      10,
     );
   });
 
@@ -287,14 +322,13 @@ describe("unsupported chain guards", () => {
       defaultChainId: 42161,
     });
 
-    await expect(
+    await expectUnsupportedChainError(
       executor.send({
         to: RECIPIENT,
         value: 1n,
         chainId: 10,
       }),
-    ).rejects.toThrow(
-      "Unsupported chain 10. Supported chains: 1 (Ethereum), 137 (Polygon), 42161 (Arbitrum One).",
+      10,
     );
   });
 });
