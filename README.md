@@ -62,6 +62,28 @@ const tx = await moneyos.send("USDC", "0x...", "10");
 console.log(tx.hash);
 ```
 
+If you want a local script or workflow to reuse an already-unlocked MoneyOS
+session, unlock first in the terminal:
+
+```bash
+moneyos auth unlock
+```
+
+Then attach that session explicitly in code:
+
+```ts
+import { createMoneyOS, connectLocalSession } from "moneyos";
+
+const execute = await connectLocalSession();
+const moneyos = createMoneyOS({
+  chainId: 42161,
+  execute,
+});
+```
+
+Tool packages should still execute against `moneyos.runtime`; they should not
+import `connectLocalSession()` themselves.
+
 The runtime seam is intentionally small. `createMoneyOS` can also take injected
 `execute`, `read`, and `assets` implementations, which is how external packages
 plug in.
@@ -119,6 +141,7 @@ What is landed in code today:
 - `~/.moneyos/config.json` now stores only non-secret settings such as chain and RPC configuration
 - `MONEYOS_PRIVATE_KEY` remains an explicit override for ephemeral CI or agent runs
 - `moneyos auth unlock` opens a short-lived local session for write commands
+- workflow scripts can attach to that unlocked session with `connectLocalSession()`
 - `moneyos auth change-password` rotates the local wallet password and locks the current session
 - `moneyos backup export|restore|status` manages encrypted wallet backups
 - Normal wallet commands resolve their write path through one shared session-aware flow

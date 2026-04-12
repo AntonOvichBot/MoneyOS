@@ -10,6 +10,7 @@ export type { FileKeyStoreOptions } from "./core/keystore-file.js";
 
 // Factory
 export { createMoneyOS } from "./core/factory.js";
+export { connectLocalSession } from "./local-session.js";
 
 // Re-export everything from @moneyos/core for backwards compatibility
 export {

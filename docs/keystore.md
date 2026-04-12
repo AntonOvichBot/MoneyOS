@@ -20,16 +20,24 @@ MoneyOS does not use:
 
 ## What is landed today
 
-### SDK boundary stays clean
+### Tool boundary stays clean
 
-`MoneyOS` itself still accepts one of:
+The runtime contract that tools build against still accepts one of:
 
 - `privateKey`
 - `signer`
 - `execute`
 
-That boundary is the keeper. The SDK does not know about password prompts,
+That boundary is the keeper for tool packages. Third-party tools depend on
+`@moneyos/core` and `MoneyOSRuntime`; they do not know about password prompts,
 local wallet files, backup files, or session daemons.
+
+### Workflow-author helper
+
+The root `moneyos` package may still expose workflow-author helpers above that
+runtime boundary. In practice, local scripts can attach to an already-unlocked
+local session with `connectLocalSession()` and then compose
+`createMoneyOS({ execute })`.
 
 ### Local wallet storage
 
@@ -55,6 +63,10 @@ Current write-path behavior is:
 1. `MONEYOS_PRIVATE_KEY` env override for explicit CI/dev use
 2. local unlocked session started by `moneyos auth unlock`
 3. otherwise fail and tell the user to unlock locally
+
+Workflow and script code can reuse that unlocked session through the root
+`moneyos` helper `connectLocalSession()`. Tool packages still stay session-
+agnostic and execute only against `MoneyOSRuntime`.
 
 The session model is intentionally local-first:
 

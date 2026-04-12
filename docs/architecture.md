@@ -33,6 +33,7 @@ It owns:
 - `MoneyOS` runtime composition
 - default viem-based read and execute implementations
 - encrypted local wallet, session, and backup flows
+- workflow-author helpers that attach to an already-unlocked local session
 - the root CLI surface, including `init`, `auth`, `backup`, `balance`,
   `send`, and `keystore`
 - the `moneyos.runtime` seam that external tools execute against
@@ -66,6 +67,7 @@ A tool is not:
 
 - part of `@moneyos/core`
 - automatically part of the root CLI or root SDK API
+- a consumer of root session-management helpers such as `connectLocalSession`
 - a provider registry or marketplace
 
 Current example: `@moneyos/swap`.

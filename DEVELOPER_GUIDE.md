@@ -4,8 +4,8 @@
 
 MoneyOS is an open source programmable money SDK and CLI by Aryze.
 `npm install moneyos` gives developers runtime composition, wallet/session
-flows, balance, and send. Swap lives in `@moneyos/swap`, not in the root
-package.
+flows, balance, send, and the `connectLocalSession()` helper for workflow
+authors. Swap lives in `@moneyos/swap`, not in the root package.
 
 Current docs:
 
@@ -49,6 +49,7 @@ src/
 │   ├── types.ts              — re-exports from @moneyos/core
 │   ├── tokens.ts             — re-exports from @moneyos/core
 │   └── chains.ts             — re-exports from @moneyos/core
+├── local-session.ts          — public workflow-author connector to the local unlocked session
 ├── cli/
 │   ├── index.ts              — CLI entry
 │   ├── config.ts             — local config and path helpers
@@ -73,7 +74,7 @@ src/
 |---------|-------------|-------------|
 | `@moneyos/core` | Runtime interfaces, shared types, token/chain registries | viem (peer) |
 | `@moneyos/swap` | Swap package with pluggable providers | @moneyos/core, viem (peer) |
-| `moneyos` | SDK + CLI for runtime composition, wallet flows, balance, and send | @moneyos/core, viem, commander |
+| `moneyos` | SDK + CLI for runtime composition, wallet flows, balance, send, and workflow-author session attachment | @moneyos/core, viem, commander |
 
 Dependency direction:
 
@@ -113,6 +114,7 @@ the downstream workspace packages.
 
 - no root-level tool-specific logic
 - no provider-specific logic in `@moneyos/core`
+- tool authors build against `@moneyos/core` and `MoneyOSRuntime`, not root session helpers
 - no AI attribution in code, commits, or docs
 - no secrets, API keys, or Aryze-internal references
 - open source ready from every commit

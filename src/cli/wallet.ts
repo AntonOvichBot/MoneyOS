@@ -12,7 +12,7 @@ import {
   hasRemovedOnePasswordConfig,
   type CLIConfig,
 } from "./config.js";
-import { getSessionStatus, SessionExecutionClient } from "./session.js";
+import { connectLocalSession } from "../local-session.js";
 
 export type CliWalletBackendKind = "env" | "wallet-file" | "session";
 
@@ -121,16 +121,16 @@ export async function buildCliMoneyOSConfig(
 
   const socketPath = getSessionPath(options);
   const tokenPath = getTokenPath(options);
-  const session = await getSessionStatus(socketPath, tokenPath);
-  if (session) {
+  try {
     return {
       ...moneyosConfig,
-      execute: new SessionExecutionClient({
+      execute: await connectLocalSession({
         socketPath,
         tokenPath,
-        address: session.address,
       }),
     };
+  } catch {
+    // Fall through so the CLI preserves the current locked-wallet error path.
   }
 
   const wallet = getWalletStore(config, options);
