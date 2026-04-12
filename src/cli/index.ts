@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { initCommand } from "./commands/init.js";
@@ -33,12 +34,20 @@ export function createProgram(): Command {
   return program;
 }
 
-const cliEntry = process.argv[1];
-const isEntrypoint =
-  typeof cliEntry === "string"
-  && resolve(cliEntry) === fileURLToPath(import.meta.url);
+function resolveEntrypointPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
 
-if (isEntrypoint) {
+export function isEntrypointPath(cliEntry: string | undefined, moduleUrl: string): boolean {
+  return typeof cliEntry === "string"
+    && resolveEntrypointPath(cliEntry) === fileURLToPath(moduleUrl);
+}
+
+if (isEntrypointPath(process.argv[1], import.meta.url)) {
   void createProgram().parseAsync(process.argv).catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
