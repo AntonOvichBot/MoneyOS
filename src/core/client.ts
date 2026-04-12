@@ -15,13 +15,12 @@ import type {
   RuntimeConfig,
 } from "@moneyos/core";
 import {
-  getChain,
   defaultChain,
-  getToken,
-  getTokenAddress,
   NATIVE_TOKEN_ADDRESS,
 } from "@moneyos/core";
 import { ViemReadClient, EOAExecutor } from "./eoa.js";
+import { DefaultAssetRegistry } from "./assets.js";
+import { NO_SIGNING_ACCOUNT_ERROR } from "./no-executor.js";
 
 const ERC20_ABI = [
   {
@@ -56,13 +55,6 @@ const ERC20_ABI = [
     outputs: [{ name: "", type: "string" }],
   },
 ] as const;
-
-class DefaultAssetRegistry implements AssetRegistry {
-  readonly nativeTokenAddress = NATIVE_TOKEN_ADDRESS;
-  getToken = getToken;
-  getTokenAddress = getTokenAddress;
-  getChain = getChain;
-}
 
 export class MoneyOS {
   private read: ReadClient;
@@ -119,9 +111,7 @@ export class MoneyOS {
 
   private requireExecutor(): ExecutionClient {
     if (!this.executor) {
-      throw new Error(
-        "No signing account configured. Set `signer`, `privateKey`, or `execute` in MoneyOS config.",
-      );
+      throw new Error(NO_SIGNING_ACCOUNT_ERROR);
     }
     return this.executor;
   }

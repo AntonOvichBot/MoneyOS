@@ -26,6 +26,10 @@ moneyos auth unlock
 moneyos auth lock
 moneyos auth status
 moneyos auth change-password
+moneyos add <tool>
+moneyos remove <tool>
+moneyos tools
+moneyos swap <amount> <tokenIn> <tokenOut> [--chain <id>] [--provider odos]
 moneyos backup export [--out ./wallet-backup.json] [--force]
 moneyos backup restore <path> [--force]
 moneyos backup status
@@ -41,8 +45,9 @@ Example:
 ```bash
 moneyos init
 moneyos auth unlock
-moneyos balance USDC
-moneyos backup status
+moneyos add swap
+moneyos tools
+moneyos swap 0.1 RYZE ETH
 ```
 
 ## SDK
@@ -88,10 +93,22 @@ The runtime seam is intentionally small. `createMoneyOS` can also take injected
 `execute`, `read`, and `assets` implementations, which is how external packages
 plug in.
 
-Swap is no longer built into the root SDK or CLI. The canonical implementation
-lives in `@moneyos/swap`, which executes against `moneyos.runtime`.
+Swap still lives in the separate `@moneyos/swap` package, but the root CLI now
+owns first-class tool install/use UX for CLI-integrated packages.
 
-Install it alongside the root package:
+For CLI usage, install the root package and then add tools into the user-level
+MoneyOS tool home:
+
+```bash
+npm install moneyos
+moneyos init
+moneyos auth unlock
+moneyos add swap
+moneyos tools
+moneyos swap 0.1 RYZE ETH
+```
+
+For direct package usage, install the tool package alongside `moneyos`:
 
 ```bash
 npm install moneyos @moneyos/swap
@@ -131,7 +148,8 @@ Published packages:
 - `@moneyos/swap`
 
 Current `moneyos` releases no longer bundle swap into the root SDK or CLI. If
-you want swap, install `@moneyos/swap` alongside `moneyos`.
+you want swap from the root CLI, install `moneyos` and then run
+`moneyos add swap`.
 
 ## Current wallet model
 

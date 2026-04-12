@@ -3,11 +3,39 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { Command } from "commander";
 import { createProgram, isEntrypointPath } from "../src/cli/index.js";
+import type {
+  CliToolManager,
+  ToolRegistryEntry,
+  ToolStatus,
+} from "../src/cli/tools/manager.js";
+
+function createEmptyToolManager(): CliToolManager {
+  return {
+    getRegistryEntries(): ToolRegistryEntry[] {
+      return [];
+    },
+    mountInstalledToolCommands(_program: Command): void {
+      // No installed tools in this test.
+    },
+    async addTool(): Promise<ToolRegistryEntry> {
+      throw new Error("not used");
+    },
+    async removeTool(): Promise<ToolRegistryEntry> {
+      throw new Error("not used");
+    },
+    async listTools(): Promise<ToolStatus[]> {
+      return [];
+    },
+  };
+}
 
 describe("root cli surface", () => {
   it("does not expose the swap command", () => {
-    const commandNames = createProgram().commands.map((command) => command.name());
+    const commandNames = createProgram({
+      toolManager: createEmptyToolManager(),
+    }).commands.map((command) => command.name());
     expect(commandNames).not.toContain("swap");
   });
 

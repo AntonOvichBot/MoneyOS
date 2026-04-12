@@ -122,6 +122,26 @@ export function getMoneyOSDir(): string {
   return CONFIG_DIR;
 }
 
+export function getToolHomeDir(): string {
+  return join(CONFIG_DIR, "tools");
+}
+
+export function getToolHomePackageJsonPath(): string {
+  return join(getToolHomeDir(), "package.json");
+}
+
+export function getToolHomeLockPath(): string {
+  return join(getToolHomeDir(), "package-lock.json");
+}
+
+export function getToolHomeNodeModulesPath(): string {
+  return join(getToolHomeDir(), "node_modules");
+}
+
+export function getToolRegistryPath(): string {
+  return join(getToolHomeDir(), "registry.json");
+}
+
 export function getWalletPath(config?: CLIConfig): string {
   return config?.walletPath ?? join(CONFIG_DIR, "wallet.json");
 }

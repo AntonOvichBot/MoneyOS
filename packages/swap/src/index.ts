@@ -1,5 +1,6 @@
 export { OdosProvider } from "./providers/odos.js";
 export { executeSwap, swapAction, createSwapTool } from "./tool.js";
+export { createSwapCliCommand, moneyosCliTool } from "./cli-tool.js";
 export type {
   SwapProvider,
   SwapQuote,

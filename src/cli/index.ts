@@ -8,11 +8,25 @@ import { sendCommand } from "./commands/send.js";
 import { keystoreCommand } from "./commands/keystore.js";
 import { authCommand } from "./commands/auth.js";
 import { backupCommand } from "./commands/backup.js";
+import {
+  createAddToolCommand,
+  createRemoveToolCommand,
+  createToolsCommand,
+} from "./commands/tools.js";
 import { runSessionDaemonProcess } from "./session.js";
+import {
+  createCliToolManager,
+  type CliToolManager,
+} from "./tools/manager.js";
 import { version } from "./version.js";
 
-export function createProgram(): Command {
+export interface CreateProgramOptions {
+  toolManager?: CliToolManager;
+}
+
+export function createProgram(options: CreateProgramOptions = {}): Command {
   const program = new Command();
+  const toolManager = options.toolManager ?? createCliToolManager();
 
   program
     .name("moneyos")
@@ -25,6 +39,10 @@ export function createProgram(): Command {
   program.addCommand(keystoreCommand);
   program.addCommand(authCommand);
   program.addCommand(backupCommand);
+  program.addCommand(createAddToolCommand(toolManager));
+  program.addCommand(createRemoveToolCommand(toolManager));
+  program.addCommand(createToolsCommand(toolManager));
+  toolManager.mountInstalledToolCommands(program);
   program
     .command("__session-daemon", { hidden: true })
     .action(async () => {

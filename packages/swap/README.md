@@ -3,23 +3,33 @@
 Canonical swap package for MoneyOS.
 
 This package owns the public swap execution surface, swap provider contract,
-and the first provider implementation, `OdosProvider`.
+the first provider implementation, `OdosProvider`, and the root CLI integration
+contract for `moneyos swap`.
 
 ## Install
+
+Root CLI path:
+
+```bash
+npm install moneyos
+moneyos init
+moneyos auth unlock
+moneyos add swap
+moneyos swap 0.1 RYZE ETH
+```
+
+Direct package path:
 
 ```bash
 npm install @moneyos/swap viem
 ```
-
-If you want to use it against the root MoneyOS runtime seam, use `moneyos@0.4.0`
-or later. Until that root release is published, use this package from the repo
-or against a custom runtime that implements the `@moneyos/core` contract.
 
 ## What it exports
 
 - `executeSwap`
 - `swapAction`
 - `createSwapTool`
+- `moneyosCliTool`
 - `SwapProvider`
 - `SwapQuote`
 - `SwapResult`

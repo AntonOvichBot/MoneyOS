@@ -16,6 +16,7 @@ import type {
 import {
   OdosProvider,
   createSwapTool,
+  moneyosCliTool,
   executeSwap,
   swapAction,
 } from "@moneyos/swap";
@@ -280,13 +281,18 @@ describe("executeSwap", () => {
 });
 
 describe("@moneyos/swap exports", () => {
-  it("exports executeSwap, swapAction, and createSwapTool with the canonical surface", () => {
+  it("exports executeSwap, swapAction, createSwapTool, and moneyosCliTool with the canonical surface", () => {
     const tool = createSwapTool();
 
     expect(tool.name).toBe("swap");
     expect(tool.version).toBe("0.1.0");
     expect(tool.actions.swap).toBe(swapAction);
     expect(tool.actions.swap.run).toBe(executeSwap);
+    expect(moneyosCliTool).toMatchObject({
+      version: 1,
+      name: "swap",
+      commandPath: ["swap"],
+    });
   });
 
   it("OdosProvider performs quote and calldata flow with core native token wiring", async () => {

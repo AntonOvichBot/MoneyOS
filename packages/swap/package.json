@@ -34,9 +34,8 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "@moneyos/core": "^0.1.0"
-  },
-  "peerDependencies": {
-    "viem": "^2.0.0"
+    "@moneyos/core": "^0.1.0",
+    "commander": "^13.1.0",
+    "viem": "^2.45.1"
   }
 }
