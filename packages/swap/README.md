@@ -1,6 +1,6 @@
-# @moneyos/tool-swap
+# @moneyos/swap
 
-Canonical swap tool package for MoneyOS.
+Canonical swap package for MoneyOS.
 
 This package owns the public swap execution surface, swap provider contract,
 and the first provider implementation, `OdosProvider`.
@@ -8,7 +8,7 @@ and the first provider implementation, `OdosProvider`.
 ## Install
 
 ```bash
-npm install @moneyos/tool-swap viem
+npm install @moneyos/swap viem
 ```
 
 If you want to use it against the root MoneyOS runtime seam, use `moneyos@0.4.0`
@@ -30,7 +30,7 @@ or against a custom runtime that implements the `@moneyos/core` contract.
 
 ```ts
 import { createMoneyOS } from "moneyos";
-import { executeSwap, OdosProvider } from "@moneyos/tool-swap";
+import { executeSwap, OdosProvider } from "@moneyos/swap";
 
 const moneyos = createMoneyOS({
   chainId: 42161,

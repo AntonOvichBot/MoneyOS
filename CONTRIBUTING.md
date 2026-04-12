@@ -24,7 +24,7 @@ If your change touches workspace packages or build output, also run:
 
 ```bash
 npm run build:core
-npm run build:tool-swap
+npm run build:swap
 npm run build
 ```
 

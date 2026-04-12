@@ -68,7 +68,7 @@ A tool is not:
 - automatically part of the root CLI or root SDK API
 - a provider registry or marketplace
 
-Current example: `@moneyos/tool-swap`.
+Current example: `@moneyos/swap`.
 
 ## Provider
 
@@ -86,7 +86,7 @@ A provider is not:
 - a `@moneyos/core` concern
 - something the root package should special-case
 
-Current example: `OdosProvider` inside `@moneyos/tool-swap`.
+Current example: `OdosProvider` inside `@moneyos/swap`.
 
 ## Skill
 
@@ -118,7 +118,7 @@ Keeping swap in root had three problems:
 - it pushed provider-shaped concerns into the wrong package
 - it made the root SDK and CLI look more general than they really were
 
-Moving swap into `@moneyos/tool-swap` keeps the core honest and makes future
+Moving swap into `@moneyos/swap` keeps the core honest and makes future
 providers belong to the swap tool instead of the repo root.
 
 ## Deferred on purpose

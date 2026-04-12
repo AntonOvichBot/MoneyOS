@@ -12,13 +12,13 @@ import {
 import type {
   SwapProvider,
   SwapQuote,
-} from "@moneyos/tool-swap";
+} from "@moneyos/swap";
 import {
   OdosProvider,
   createSwapTool,
   executeSwap,
   swapAction,
-} from "@moneyos/tool-swap";
+} from "@moneyos/swap";
 import { MoneyOS } from "../src/index.js";
 
 const SENDER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Address;
@@ -279,7 +279,7 @@ describe("executeSwap", () => {
   });
 });
 
-describe("@moneyos/tool-swap exports", () => {
+describe("@moneyos/swap exports", () => {
   it("exports executeSwap, swapAction, and createSwapTool with the canonical surface", () => {
     const tool = createSwapTool();
 

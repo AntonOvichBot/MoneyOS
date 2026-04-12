@@ -1,5 +1,5 @@
 {
-  "name": "@moneyos/tool-swap",
+  "name": "@moneyos/swap",
   "version": "0.1.0",
   "description": "Swap tool for MoneyOS — token swaps with pluggable providers",
   "type": "module",
@@ -23,9 +23,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/1231CheGites/MoneyOS.git",
-    "directory": "packages/tool-swap"
+    "directory": "packages/swap"
   },
-  "homepage": "https://github.com/1231CheGites/MoneyOS/tree/main/packages/tool-swap",
+  "homepage": "https://github.com/1231CheGites/MoneyOS/tree/main/packages/swap",
   "bugs": {
     "url": "https://github.com/1231CheGites/MoneyOS/issues"
   },

@@ -30,7 +30,7 @@ Everything product-specific above that should live in tool packages.
 Tools are separate packages above the core that implement one workflow against
 the runtime seam.
 
-Current example: `@moneyos/tool-swap`.
+Current example: `@moneyos/swap`.
 
 Longer term, the repo may grow more tool packages such as bank, card, bridge,
 onramp, or offramp. Those are direction notes, not shipped root-package
@@ -40,7 +40,7 @@ features.
 
 Providers are tool-level adapters for external protocols or services.
 
-Today, Odos lives under `@moneyos/tool-swap`. The root package should not
+Today, Odos lives under `@moneyos/swap`. The root package should not
 special-case provider logic. If more providers arrive, they should belong to
 the swap tool, not to `moneyos` or `@moneyos/core`.
 
@@ -82,9 +82,9 @@ GitHub, HuggingFace, following OpenAI and Anthropic ecosystems.
 
 Distribution strategy:
 
-1. Developers find a tool they need.
-2. The tool depends on MoneyOS core.
-3. MoneyOS gets installed as a dependency.
+1. Developers find the workflow package they need.
+2. That package pulls in `@moneyos/core`.
+3. They compose it with `moneyos` or another compatible runtime.
 4. The developer is now in the ecosystem.
 
 The npm package is the wedge. Not a landing page, not a pitch deck.
@@ -94,7 +94,7 @@ The npm package is the wedge. Not a landing page, not a pitch deck.
 - **Chain**: Arbitrum first
 - **On-chain reads**: viem
 - **Wallet/signing**: viem
-- **Swaps**: `@moneyos/tool-swap` with Odos today
+- **Swaps**: `@moneyos/swap` with Odos today
 - **Language**: TypeScript
 - **Package**: `npm install moneyos`
 
@@ -107,7 +107,7 @@ The npm package is the wedge. Not a landing page, not a pitch deck.
 - `moneyos send` for token sends
 - SDK surface: `createMoneyOS`, `MoneyOS.balance`, `MoneyOS.send`,
   `moneyos.runtime`
-- `@moneyos/tool-swap` as an in-repo workspace package with `executeSwap` and
+- `@moneyos/swap` as an in-repo workspace package with `executeSwap` and
   `OdosProvider`
 - Chains: Arbitrum, Ethereum, Polygon
 

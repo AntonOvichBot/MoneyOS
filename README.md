@@ -12,7 +12,7 @@ but the repo is structured so each major surface can evolve independently.
 
 - `moneyos`: the root SDK + CLI package for runtime, wallet, balance, and send
 - `@moneyos/core`: runtime interfaces, shared types, chain/token registries
-- `@moneyos/tool-swap`: canonical swap tool package and Odos provider in this repo workspace
+- `@moneyos/swap`: canonical swap package and Odos provider in this repo workspace
 
 Current package-boundary rules live in [`docs/architecture.md`](docs/architecture.md).
 
@@ -67,13 +67,13 @@ The runtime seam is intentionally small. `createMoneyOS` can also take injected
 plug in.
 
 Swap is no longer built into the root SDK or CLI. The canonical implementation
-lives in the `@moneyos/tool-swap` workspace package in this repo. That package
+lives in the `@moneyos/swap` workspace package in this repo. That package
 is not published on npm yet, so use it from this monorepo, a git dependency,
 or another local build. It executes against `moneyos.runtime`:
 
 ```ts
 import { createMoneyOS } from "moneyos";
-import { executeSwap, OdosProvider } from "@moneyos/tool-swap";
+import { executeSwap, OdosProvider } from "@moneyos/swap";
 
 const moneyos = createMoneyOS({
   chainId: 42161,
@@ -99,7 +99,7 @@ console.log(result.hash);
 `moneyos` is published on npm. `npm install moneyos` and `npx moneyos` give
 you the latest tagged release, not unreleased commits on `main`.
 
-`@moneyos/tool-swap` is not published on npm yet. If you want the swap tool
+`@moneyos/swap` is not published on npm yet. If you want the swap package
 today, clone the repo and build from source, or consume the workspace package
 through a git/local dependency.
 
@@ -239,7 +239,7 @@ What still needs more hands-on validation:
 ```bash
 npm install
 npm run build:core
-npm run build:tool-swap
+npm run build:swap
 npm run typecheck
 npm test
 npm run lint
@@ -247,7 +247,7 @@ npm run build
 ```
 
 The repo currently uses npm workspaces. Test runs build `@moneyos/core` and
-`@moneyos/tool-swap` first so the swap tests exercise the real workspace
+`@moneyos/swap` first so the swap tests exercise the real workspace
 package boundary instead of source-relative imports. Before any npm release,
 verify the packed tarballs with `npm pack --dry-run` and confirm publish-time
 dependency resolution for the extracted workspace packages.

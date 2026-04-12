@@ -38,4 +38,4 @@ export const pingAction: MoneyOSAction<PingInput, PingResult> = {
 ## Related packages
 
 - [`moneyos`](https://www.npmjs.com/package/moneyos) for the default SDK and CLI
-- [`@moneyos/tool-swap`](https://www.npmjs.com/package/@moneyos/tool-swap) for the canonical swap tool
+- [`@moneyos/swap`](https://www.npmjs.com/package/@moneyos/swap) for the canonical swap package

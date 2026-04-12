@@ -4,7 +4,7 @@
 
 MoneyOS is an open source programmable money SDK and CLI by Aryze.
 `npm install moneyos` gives developers runtime composition, wallet/session
-flows, balance, and send. Swap lives in `@moneyos/tool-swap`, not in the root
+flows, balance, and send. Swap lives in `@moneyos/swap`, not in the root
 package.
 
 Current docs:
@@ -28,7 +28,7 @@ packages/
 │       ├── chains.ts         — chain registry
 │       ├── keystore.ts       — shared KeyStore types
 │       └── index.ts          — public exports
-├── tool-swap/                — @moneyos/tool-swap: swap tool + Odos provider
+├── swap/                     — @moneyos/swap: swap package + Odos provider
 │   └── src/
 │       ├── tool.ts           — executeSwap, swapAction, createSwapTool
 │       ├── types.ts          — SwapProvider and swap result types
@@ -72,14 +72,14 @@ src/
 | Package | Description | Dependencies |
 |---------|-------------|-------------|
 | `@moneyos/core` | Runtime interfaces, shared types, token/chain registries | viem (peer) |
-| `@moneyos/tool-swap` | Swap tool with pluggable providers | @moneyos/core, viem (peer) |
+| `@moneyos/swap` | Swap package with pluggable providers | @moneyos/core, viem (peer) |
 | `moneyos` | SDK + CLI for runtime composition, wallet flows, balance, and send | @moneyos/core, viem, commander |
 
 Dependency direction:
 
 ```text
 moneyos ──┐
-          ├──► @moneyos/core ◄── @moneyos/tool-swap
+          ├──► @moneyos/core ◄── @moneyos/swap
 ```
 
 ## Build
@@ -88,7 +88,7 @@ moneyos ──┐
 npm install
 npm run build:core
 npm run build
-npm run build:tool-swap
+npm run build:swap
 npm run typecheck
 npm run test
 ```
@@ -99,8 +99,8 @@ the downstream workspace packages.
 ## Publishing
 
 - package name: `moneyos`
-- workspace packages: `@moneyos/core`, `@moneyos/tool-swap`
-- `@moneyos/tool-swap` is not published yet
+- workspace packages: `@moneyos/core`, `@moneyos/swap`
+- `@moneyos/swap` is not published yet
 - before publish: verify registry ownership, confirm packed tarballs include
   built artifacts, and validate the install surface
 - test before publish: `npm pack --dry-run`, install the tarball in a clean
