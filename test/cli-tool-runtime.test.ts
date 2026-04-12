@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { Command } from "commander";
 import type { ExecutionClient } from "@moneyos/core";
 import { createMoneyOSCliContext } from "../src/cli/tools/runtime.js";
 
@@ -43,6 +44,8 @@ describe("MoneyOSCliContext runtime", () => {
     });
 
     expect(connectLocalSession).toHaveBeenCalledOnce();
+    expect(runtime).toBeDefined();
+    expect(ctx.Command).toBe(Command);
     expect(runtime.execute).toBe(execute);
     expect(runtime.config).toEqual({
       defaultChainId: 10,

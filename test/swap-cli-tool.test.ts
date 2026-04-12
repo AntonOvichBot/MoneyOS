@@ -1,35 +1,42 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { MoneyOSRuntime } from "@moneyos/core";
-import {
-  createSwapCliCommand,
-  moneyosCliTool,
-} from "@moneyos/swap";
+import { Command } from "commander";
+import { NATIVE_TOKEN_ADDRESS, type MoneyOSRuntime } from "@moneyos/core";
+import { moneyosCliTool } from "@moneyos/swap";
 
-function createRuntime(): MoneyOSRuntime {
+const ROUTER = "0x1111111111111111111111111111111111111111";
+const TOKEN_ADDRESSES: Record<string, `0x${string}`> = {
+  USDC: "0x2222222222222222222222222222222222222222",
+  RYZE: "0x3333333333333333333333333333333333333333",
+  ETH: NATIVE_TOKEN_ADDRESS,
+};
+
+function createRuntime(chainId: number): MoneyOSRuntime & {
+  read: { readContract: ReturnType<typeof vi.fn> };
+  execute: { send: ReturnType<typeof vi.fn> };
+} {
   return {
     read: {
       getBalance: vi.fn(),
-      readContract: vi.fn(),
+      readContract: vi.fn().mockResolvedValue(10n ** 18n),
     },
     execute: {
       mode: "eoa",
-      getAddress: () => "0x1111111111111111111111111111111111111111",
-      send: vi.fn(),
-      capabilities: () => ({
-        sponsoredGas: false,
-        batching: false,
-        simulation: false,
-      }),
+      getAddress: () => "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      send: vi.fn().mockResolvedValue({ hash: "0xabc", chainId }),
+      capabilities: () => ({ sponsoredGas: false, batching: false, simulation: false }),
     },
     assets: {
-      getToken: vi.fn(),
-      getTokenAddress: vi.fn(),
+      getToken: (symbol) => (
+        symbol in TOKEN_ADDRESSES
+          ? { name: symbol, symbol, decimals: symbol === "USDC" ? 6 : 18 }
+          : undefined
+      ),
+      getTokenAddress: (symbol, requestedChainId) =>
+        requestedChainId === chainId ? TOKEN_ADDRESSES[symbol] : undefined,
       getChain: vi.fn(),
-      nativeTokenAddress: "0x0000000000000000000000000000000000000000",
+      nativeTokenAddress: NATIVE_TOKEN_ADDRESS,
     },
-    config: {
-      defaultChainId: 42161,
-    },
+    config: { defaultChainId: chainId },
   };
 }
 
@@ -44,160 +51,116 @@ describe("@moneyos/swap CLI tool", () => {
       name: "swap",
       commandPath: ["swap"],
     });
-    expect(moneyosCliTool.createCommand).toBeTypeOf("function");
   });
 
   it("defaults the provider to odos and maps arguments into executeSwap", async () => {
-    const runtime = createRuntime();
+    const runtime = createRuntime(42161);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ pathId: "path-1", outAmounts: ["1234500000000000000"], outValues: [1] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ transaction: { to: ROUTER, data: "0xdeadbeef", value: "0" } }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const getRuntime = vi.fn().mockResolvedValue(runtime);
-    const provider = { name: "odos", getQuote: vi.fn(), getCalldata: vi.fn() };
-    const createProvider = vi.fn().mockReturnValue(provider);
-    const executeSwap = vi.fn().mockResolvedValue({
-      amountIn: "0.1",
-      amountOut: "1.2",
-      tokenIn: "RYZE",
-      tokenOut: "ETH",
-      hash: "0xabc",
+
+    await moneyosCliTool.createCommand({ Command, getRuntime }).parseAsync([
+      "node",
+      "swap",
+      "0.1",
+      "RYZE",
+      "ETH",
+    ]);
+
+    expect(getRuntime).toHaveBeenCalledWith({ chainId: undefined, requireSession: true });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://api.odos.xyz/sor/quote/v2",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string)).toMatchObject({
+      chainId: 42161,
+      inputTokens: [{ tokenAddress: TOKEN_ADDRESSES.RYZE, amount: "100000000000000000" }],
+      outputTokens: [{ tokenAddress: "0x0000000000000000000000000000000000000000", proportion: 1 }],
+    });
+    expect(runtime.execute.send).toHaveBeenCalledWith({
+      to: ROUTER,
+      data: "0xdeadbeef",
+      value: 0n,
       chainId: 42161,
     });
-    const log = vi.fn();
-
-    const command = createSwapCliCommand(
-      {
-        getRuntime,
-      },
-      {
-        executeSwap,
-        createProvider,
-        log,
-      },
-    );
-
-    await command.parseAsync(["node", "swap", "0.1", "RYZE", "ETH"]);
-
-    expect(createProvider).toHaveBeenCalledWith("odos");
-    expect(getRuntime).toHaveBeenCalledWith({
-      chainId: undefined,
-      requireSession: true,
-    });
-    expect(executeSwap).toHaveBeenCalledWith(
-      {
-        amount: "0.1",
-        tokenIn: "RYZE",
-        tokenOut: "ETH",
-        chainId: 42161,
-        provider,
-      },
-      runtime,
-    );
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Swapped 0.1 RYZE for 1.2345 ETH."));
   });
 
-  it("passes the parsed chain id through getRuntime and executeSwap", async () => {
-    const runtime = createRuntime();
-    runtime.config.defaultChainId = 10;
+  it("passes the parsed chain id through getRuntime and the runtime execution path", async () => {
+    const runtime = createRuntime(137);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ pathId: "path-1", outAmounts: ["1234500000000000000"], outValues: [1] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ transaction: { to: ROUTER, data: "0xdeadbeef", value: "0" } }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
     const getRuntime = vi.fn().mockResolvedValue(runtime);
-    const executeSwap = vi.fn().mockResolvedValue({
-      amountIn: "1",
-      amountOut: "2",
-      tokenIn: "USDC",
-      tokenOut: "ETH",
-      hash: "0xdef",
-      chainId: 10,
-    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const command = createSwapCliCommand(
-      {
-        getRuntime,
-      },
-      {
-        executeSwap,
-        createProvider: vi.fn().mockReturnValue({
-          name: "odos",
-          getQuote: vi.fn(),
-          getCalldata: vi.fn(),
-        }),
-        log: vi.fn(),
-      },
-    );
-
-    await command.parseAsync([
+    await moneyosCliTool.createCommand({ Command, getRuntime }).parseAsync([
       "node",
       "swap",
       "1",
       "USDC",
       "ETH",
       "--chain",
-      "10",
+      "137",
     ]);
 
-    expect(getRuntime).toHaveBeenCalledWith({
-      chainId: 10,
-      requireSession: true,
-    });
-    expect(executeSwap).toHaveBeenCalledWith(
-      expect.objectContaining({
-        chainId: 10,
-      }),
-      runtime,
+    expect(getRuntime).toHaveBeenCalledWith({ chainId: 137, requireSession: true });
+    expect(runtime.execute.send).toHaveBeenCalledWith(
+      expect.objectContaining({ chainId: 137 }),
     );
   });
 
   it("surfaces the missing-session error clearly", async () => {
-    const command = createSwapCliCommand(
-      {
-        getRuntime: vi.fn().mockRejectedValue(
-          new Error(
-            "No active local MoneyOS session found. Run `moneyos auth unlock` locally first.",
-          ),
-        ),
-      },
-      {
-        executeSwap: vi.fn(),
-        createProvider: vi.fn(),
-        log: vi.fn(),
-      },
-    );
-
     await expect(
-      command.parseAsync(["node", "swap", "1", "USDC", "ETH"]),
+      moneyosCliTool.createCommand({
+        Command,
+        getRuntime: vi.fn().mockRejectedValue(
+          new Error("No active local MoneyOS session found. Run `moneyos auth unlock` locally first."),
+        ),
+      }).parseAsync(["node", "swap", "1", "USDC", "ETH"]),
     ).rejects.toThrow(/moneyos auth unlock/i);
   });
 
   it("uses MoneyOSRuntime rather than session internals directly", async () => {
-    const runtime = createRuntime();
-    const executeSwap = vi.fn().mockResolvedValue({
-      amountIn: "1",
-      amountOut: "2",
-      tokenIn: "USDC",
-      tokenOut: "ETH",
-      hash: "0x123",
-      chainId: 42161,
-    });
-    const log = vi.fn();
+    const runtime = createRuntime(42161);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ pathId: "path-1", outAmounts: ["1234500000000000000"], outValues: [1] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ transaction: { to: ROUTER, data: "0xdeadbeef", value: "0" } }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "log").mockImplementation(() => {});
 
-    const command = createSwapCliCommand(
-      {
-        getRuntime: vi.fn().mockResolvedValue(runtime),
-      },
-      {
-        executeSwap,
-        createProvider: vi.fn().mockReturnValue({
-          name: "odos",
-          getQuote: vi.fn(),
-          getCalldata: vi.fn(),
-        }),
-        log,
-      },
-    );
+    await moneyosCliTool.createCommand({
+      Command,
+      getRuntime: vi.fn().mockResolvedValue(runtime),
+    }).parseAsync(["node", "swap", "1", "USDC", "ETH"]);
 
-    await command.parseAsync(["node", "swap", "1", "USDC", "ETH"]);
-
-    expect(executeSwap).toHaveBeenCalledWith(
-      expect.any(Object),
-      runtime,
-    );
-    expect(log).toHaveBeenCalledWith(
-      expect.stringContaining("Swapped 1 USDC for 2 ETH."),
-    );
+    expect(runtime.read.readContract).toHaveBeenCalledOnce();
+    expect(runtime.execute.send).toHaveBeenCalledOnce();
   });
 });

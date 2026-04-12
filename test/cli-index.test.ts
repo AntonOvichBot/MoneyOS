@@ -5,13 +5,9 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { Command } from "commander";
 import { createProgram, isEntrypointPath } from "../src/cli/index.js";
-import type {
-  CliToolManager,
-  ToolRegistryEntry,
-  ToolStatus,
-} from "../src/cli/tools/manager.js";
+import type { ToolRegistryEntry } from "../src/cli/tools/manager.js";
 
-function createEmptyToolManager(): CliToolManager {
+function createEmptyToolManager(): NonNullable<Parameters<typeof createProgram>[0]>["toolManager"] {
   return {
     getRegistryEntries(): ToolRegistryEntry[] {
       return [];
@@ -25,7 +21,7 @@ function createEmptyToolManager(): CliToolManager {
     async removeTool(): Promise<ToolRegistryEntry> {
       throw new Error("not used");
     },
-    async listTools(): Promise<ToolStatus[]> {
+    async listTools() {
       return [];
     },
   };

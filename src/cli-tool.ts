@@ -1,7 +1,8 @@
+import { Command } from "commander";
 import type { MoneyOSRuntime } from "@moneyos/core";
-import type { Command } from "commander";
 
 export interface MoneyOSCliContext {
+  Command: typeof Command;
   getRuntime(options?: {
     chainId?: number;
     requireSession?: boolean;

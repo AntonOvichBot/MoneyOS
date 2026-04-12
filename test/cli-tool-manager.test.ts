@@ -7,12 +7,20 @@ import { createProgram } from "../src/cli/index.js";
 import type { MoneyOSCliTool } from "../src/cli-tool.js";
 import {
   createCliToolManager,
-  type CliToolModuleLoader,
-  type CliToolPackageManager,
-  type LoadedInstalledTool,
-  type ToolHomePaths,
   type ToolRegistryEntry,
 } from "../src/cli/tools/manager.js";
+
+type ToolHomePaths = {
+  rootDir: string;
+  packageJsonPath: string;
+  registryPath: string;
+};
+
+type LoadedInstalledTool = {
+  packageName: string;
+  packageVersion: string;
+  cliTool: unknown;
+};
 
 interface CatalogRecord {
   version: string;
@@ -84,9 +92,9 @@ function createFakeCliTool(params: {
     name: params.name,
     commandPath: params.commandPath,
     description: params.description ?? `${params.name} description`,
-    createCommand(ctx): Command {
+    createCommand(ctx) {
       params.onCreate?.(ctx);
-      return new Command(params.commandPath[params.commandPath.length - 1])
+      return new ctx.Command(params.commandPath[params.commandPath.length - 1])
         .argument("[args...]")
         .action(async (args: string[]) => {
           await params.onInvoke?.(...args);
@@ -97,8 +105,11 @@ function createFakeCliTool(params: {
 
 function createHarness(catalog: Record<string, CatalogRecord>): {
   paths: ToolHomePaths;
-  packageManager: CliToolPackageManager;
-  moduleLoader: CliToolModuleLoader;
+  packageManager: {
+    install(paths: ToolHomePaths, spec: string): Promise<void>;
+    uninstall(paths: ToolHomePaths, packageName: string): Promise<void>;
+  };
+  moduleLoader: (paths: ToolHomePaths, packageName: string) => Promise<LoadedInstalledTool>;
   installs: string[];
   uninstalls: string[];
   installed: Map<string, LoadedInstalledTool>;
@@ -118,7 +129,7 @@ function createHarness(catalog: Record<string, CatalogRecord>): {
   const uninstalls: string[] = [];
   const installed = new Map<string, LoadedInstalledTool>();
 
-  const packageManager: CliToolPackageManager = {
+  const packageManager = {
     async install(managerPaths, spec) {
       installs.push(spec);
       const { packageName, version } = parsePackageSpec(spec);
@@ -146,14 +157,12 @@ function createHarness(catalog: Record<string, CatalogRecord>): {
     },
   };
 
-  const moduleLoader: CliToolModuleLoader = {
-    async loadInstalledTool(_managerPaths, packageName) {
-      const loaded = installed.get(packageName);
-      if (!loaded) {
-        throw new Error(`Package ${packageName} is missing from the fake tool home.`);
-      }
-      return loaded;
-    },
+  const moduleLoader = async (_managerPaths: ToolHomePaths, packageName: string) => {
+    const loaded = installed.get(packageName);
+    if (!loaded) {
+      throw new Error(`Package ${packageName} is missing from the fake tool home.`);
+    }
+    return loaded;
   };
 
   return {
@@ -204,6 +213,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader: harness.moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -235,6 +245,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader: harness.moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -264,6 +275,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader: harness.moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -293,6 +305,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader: harness.moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -325,6 +338,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader: harness.moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -359,6 +373,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader: harness.moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -382,11 +397,9 @@ describe("cli tool manager", () => {
         }),
       },
     });
-    const moduleLoader: CliToolModuleLoader = {
-      async loadInstalledTool(paths, packageName) {
-        onLoad();
-        return harness.moduleLoader.loadInstalledTool(paths, packageName);
-      },
+    const moduleLoader = async (paths: ToolHomePaths, packageName: string) => {
+      onLoad();
+      return harness.moduleLoader(paths, packageName);
     };
 
     const manager = createCliToolManager({
@@ -394,6 +407,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -419,11 +433,9 @@ describe("cli tool manager", () => {
       },
     });
     const onLoad = vi.fn();
-    const moduleLoader: CliToolModuleLoader = {
-      async loadInstalledTool(paths, packageName) {
-        onLoad();
-        return harness.moduleLoader.loadInstalledTool(paths, packageName);
-      },
+    const moduleLoader = async (paths: ToolHomePaths, packageName: string) => {
+      onLoad();
+      return harness.moduleLoader(paths, packageName);
     };
 
     const manager = createCliToolManager({
@@ -431,6 +443,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -455,10 +468,8 @@ describe("cli tool manager", () => {
         }),
       },
     });
-    const moduleLoader: CliToolModuleLoader = {
-      async loadInstalledTool() {
-        throw new Error("Package @moneyos/broken-tool does not export `moneyosCliTool`.");
-      },
+    const moduleLoader = async () => {
+      throw new Error("Package @moneyos/broken-tool does not export `moneyosCliTool`.");
     };
 
     const manager = createCliToolManager({
@@ -466,6 +477,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -486,12 +498,10 @@ describe("cli tool manager", () => {
         }),
       },
     });
-    const moduleLoader: CliToolModuleLoader = {
-      async loadInstalledTool() {
-        throw new Error(
-          "Package @moneyos/versioned-tool exports unsupported moneyosCliTool.version 2. Expected 1.",
-        );
-      },
+    const moduleLoader = async () => {
+      throw new Error(
+        "Package @moneyos/versioned-tool exports unsupported moneyosCliTool.version 2. Expected 1.",
+      );
     };
 
     const manager = createCliToolManager({
@@ -499,6 +509,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });
@@ -512,6 +523,7 @@ describe("cli tool manager", () => {
   it("tools receive MoneyOSCliContext rather than the root Commander program", async () => {
     const receivedContext: unknown[] = [];
     const cliContext = {
+      Command,
       getRuntime: vi.fn(),
     };
     const harness = registerHarness({
@@ -555,11 +567,9 @@ describe("cli tool manager", () => {
       },
     });
     const onLoad = vi.fn();
-    const moduleLoader: CliToolModuleLoader = {
-      async loadInstalledTool() {
-        onLoad();
-        throw new Error("broken tool");
-      },
+    const moduleLoader = async () => {
+      onLoad();
+      throw new Error("broken tool");
     };
 
     const manager = createCliToolManager({
@@ -567,6 +577,7 @@ describe("cli tool manager", () => {
       packageManager: harness.packageManager,
       moduleLoader,
       cliContext: {
+        Command,
         getRuntime: vi.fn(),
       },
     });

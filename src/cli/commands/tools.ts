@@ -1,7 +1,6 @@
 import { Command } from "commander";
-import type { CliToolManager } from "../tools/manager.js";
 import {
-  formatAddedTool,
+  createCliToolManager,
   formatToolStatusTable,
 } from "../tools/manager.js";
 
@@ -9,14 +8,18 @@ function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function createAddToolCommand(toolManager: CliToolManager): Command {
+export function createAddToolCommand(
+  toolManager: ReturnType<typeof createCliToolManager>,
+): Command {
   return new Command("add")
     .description("Install or update a MoneyOS CLI tool into the user tool home")
     .argument("<tool>", "Tool alias or npm package spec")
     .action(async (tool: string) => {
       try {
         const entry = await toolManager.addTool(tool);
-        console.log(formatAddedTool(entry));
+        console.log(
+          `Installed ${entry.packageName}@${entry.packageVersion} as \`moneyos ${entry.commandPath.join(" ")}\`.`,
+        );
       } catch (error) {
         console.error(formatError(error));
         process.exitCode = 1;
@@ -24,7 +27,9 @@ export function createAddToolCommand(toolManager: CliToolManager): Command {
     });
 }
 
-export function createRemoveToolCommand(toolManager: CliToolManager): Command {
+export function createRemoveToolCommand(
+  toolManager: ReturnType<typeof createCliToolManager>,
+): Command {
   return new Command("remove")
     .description("Remove an installed MoneyOS CLI tool from the user tool home")
     .argument("<tool>", "Installed tool name, command path, or npm package")
@@ -41,7 +46,9 @@ export function createRemoveToolCommand(toolManager: CliToolManager): Command {
     });
 }
 
-export function createToolsCommand(toolManager: CliToolManager): Command {
+export function createToolsCommand(
+  toolManager: ReturnType<typeof createCliToolManager>,
+): Command {
   return new Command("tools")
     .description("List installed MoneyOS CLI tools from the registry")
     .action(async () => {

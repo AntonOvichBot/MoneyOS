@@ -14,14 +14,11 @@ import {
   createToolsCommand,
 } from "./commands/tools.js";
 import { runSessionDaemonProcess } from "./session.js";
-import {
-  createCliToolManager,
-  type CliToolManager,
-} from "./tools/manager.js";
+import { createCliToolManager } from "./tools/manager.js";
 import { version } from "./version.js";
 
 export interface CreateProgramOptions {
-  toolManager?: CliToolManager;
+  toolManager?: ReturnType<typeof createCliToolManager>;
 }
 
 export function createProgram(options: CreateProgramOptions = {}): Command {

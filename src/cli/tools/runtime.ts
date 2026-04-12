@@ -1,3 +1,4 @@
+import { Command } from "commander";
 import type { AssetRegistry, MoneyOSRuntime, ReadClient } from "@moneyos/core";
 import type { ConnectLocalSessionOptions } from "../../local-session.js";
 import { connectLocalSession } from "../../local-session.js";
@@ -35,6 +36,7 @@ export function createMoneyOSCliContext(
   deps: CreateMoneyOSCliContextDependencies = defaultCreateMoneyOSCliContextDependencies,
 ): MoneyOSCliContext {
   return {
+    Command,
     async getRuntime(options = {}): Promise<MoneyOSRuntime> {
       const config = deps.loadConfig();
       const chainId = options.chainId ?? config.chainId ?? 42161;
