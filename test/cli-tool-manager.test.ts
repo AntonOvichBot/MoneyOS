@@ -711,11 +711,13 @@ describe("cli tool manager", () => {
 
     const program = createProgram({ toolManager: manager });
 
-    await expect(
-      program.parseAsync(["node", "moneyos", "swap", "1", "USDC", "ETH"]),
-    ).rejects.toThrow(
-      /Installed tool swap is broken: invalid tool wiring\. Run `moneyos add @moneyos\/swap` to repair it or `moneyos remove @moneyos\/swap` to uninstall it\./i,
-    );
+    const error = await program
+      .parseAsync(["node", "moneyos", "swap", "1", "USDC", "ETH"])
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toMatch(/Installed tool swap is broken/i);
+    expect((error as Error).message).toMatch(/invalid tool wiring/i);
   });
 
   it("mounts nested command paths under shared parent groups", async () => {

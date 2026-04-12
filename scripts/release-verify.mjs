@@ -81,6 +81,8 @@ function assertChangelogContainsVersion(label, changelogPath, version) {
   }
 }
 
+// Callers must pass the exact package.json version string, including any
+// pre-release suffix, not a prefix such as "0.5.0" for "0.5.0-beta.1".
 function assertOutputIncludesVersion(label, output, version) {
   const versionPattern = new RegExp(`(^|\\b)${escapeRegExp(version)}(\\b|$)`);
   if (!versionPattern.test(output)) {
@@ -192,6 +194,13 @@ function smokeSwap(coreTarballPath, swapTarballPath) {
     if (output !== "swap") {
       throw new Error(`Installed @moneyos/swap smoke output mismatch: ${output}.`);
     }
+
+    smokeCommonJs(
+      installDir,
+      "const { createSwapTool, moneyosCliTool } = require('@moneyos/swap'); if (typeof createSwapTool !== 'function') throw new Error('missing createSwapTool'); process.stdout.write(moneyosCliTool.commandPath.join(' '));",
+      "swap",
+      "@moneyos/swap",
+    );
   } finally {
     rmSync(installDir, { recursive: true, force: true });
   }
