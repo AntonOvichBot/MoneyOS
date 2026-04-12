@@ -2,6 +2,23 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## 0.5.0 - 2026-04-12
+
+### Added
+
+- `moneyos` now ships first-class CLI tool install/use UX with `moneyos add`,
+  `moneyos remove`, and `moneyos tools`
+- root CLI tool loading now uses a user-scoped registry and lazy-loads
+  installed tool packages on demand instead of baking tool logic into root
+- `@moneyos/swap@0.2.0` now exports `moneyosCliTool`, making `moneyos swap`
+  mountable through the root CLI after install
+
+### Fixed
+
+- runtime errors thrown by installed tools now pass through to the user instead
+  of being mislabeled as broken-tool repair errors; only load/validation
+  failures are wrapped as installed-tool breakage
+
 ## 0.4.1 - 2026-04-12
 
 ### Fixed
