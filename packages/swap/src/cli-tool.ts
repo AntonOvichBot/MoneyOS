@@ -2,7 +2,8 @@ import type { MoneyOSRuntime } from "@moneyos/core";
 import { OdosProvider } from "./providers/odos.js";
 import { executeSwap } from "./tool.js";
 
-type CommandBuilder = { description(text: string): CommandBuilder; argument(usage: string, description?: string): CommandBuilder; option(flags: string, description?: string, defaultValue?: unknown): CommandBuilder; action(fn: (...args: any[]) => Promise<void>): CommandBuilder };
+type SwapCommandOptions = { chain?: string; provider?: string };
+type CommandBuilder = { description(text: string): CommandBuilder; argument(usage: string, description?: string): CommandBuilder; option(flags: string, description?: string, defaultValue?: unknown): CommandBuilder; action(fn: (...args: [string, string, string, SwapCommandOptions]) => Promise<void>): CommandBuilder };
 
 export const moneyosCliTool = {
   version: 1 as const,
@@ -17,7 +18,7 @@ export const moneyosCliTool = {
       .argument("<tokenOut>", "Output token symbol")
       .option("-c, --chain <chainId>", "Chain ID")
       .option("--provider <provider>", "Swap provider (default: odos)", "odos")
-      .action(async (amount: string, tokenIn: string, tokenOut: string, options: { chain?: string; provider?: string }) => {
+      .action(async (amount: string, tokenIn: string, tokenOut: string, options: SwapCommandOptions) => {
         let chainId: number | undefined;
         if (options.chain) {
           chainId = Number.parseInt(options.chain, 10);
