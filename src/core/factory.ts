@@ -16,15 +16,26 @@ import { MoneyOS } from "./client.js";
  *     chainId: 42161,
  *     execute: myExecutionClient,
  *   });
- *   // moneyos.send / moneyos.swap transparently use the injected executor
+ *   // moneyos.send transparently uses the injected executor
  * ```
  *
  * You can also inject `read` or `assets` if you need custom implementations.
  * `privateKey` and `execute` are mutually exclusive.
  *
- * Future (with tools):
+ * External tools execute against the runtime seam. For example, the in-repo
+ * swap tool workspace package can run against `moneyos.runtime`:
  * ```ts
- *   const moneyos = createMoneyOS(config).use(swapTool());
+ *   const moneyos = createMoneyOS({ chainId: 42161, privateKey: "0x..." });
+ *   const result = await executeSwap(
+ *     {
+ *       tokenIn: "USDC",
+ *       tokenOut: "RYZE",
+ *       amount: "1",
+ *       provider: new OdosProvider(),
+ *       chainId: 42161,
+ *     },
+ *     moneyos.runtime,
+ *   );
  * ```
  */
 export function createMoneyOS(config: MoneyOSConfig): MoneyOS {

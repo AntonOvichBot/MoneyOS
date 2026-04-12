@@ -2,9 +2,6 @@
 export type {
   Balance,
   SendResult,
-  SwapQuote,
-  SwapResult,
-  SwapProvider,
   Chain,
 } from "./types.js";
 

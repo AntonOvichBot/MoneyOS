@@ -188,7 +188,7 @@ The current encrypted-wallet flow also enforces a few practical guardrails:
 
 These are real current-state caveats, not future ideas:
 
-- Session-backed `send` and `swap` are still not idempotent across client
+- Session-backed write commands are still not idempotent across client
   disconnects. If a write command errors after submission begins, the caller
   should verify on-chain state before retrying.
 - PR #12 fixed the common false-timeout path by separating short control

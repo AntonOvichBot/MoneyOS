@@ -18,37 +18,6 @@ export interface SendResult {
   chainId: number;
 }
 
-export interface SwapQuote {
-  tokenIn: string;
-  tokenOut: string;
-  amountIn: string;
-  expectedOut: string;
-  router: Address;
-  chainId: number;
-}
-
-export interface SwapResult {
-  hash: Hex;
-  tokenIn: string;
-  tokenOut: string;
-  amountIn: string;
-  amountOut: string;
-  chainId: number;
-}
-
-export interface SwapProvider {
-  name: string;
-  getQuote(params: {
-    chainId: number;
-    tokenIn: Address;
-    tokenOut: Address;
-    amount: bigint;
-    sender: Address;
-    slippage?: number;
-  }): Promise<SwapQuote>;
-  getCalldata(quote: SwapQuote): Promise<{ to: Address; data: Hex; value: bigint }>;
-}
-
 export interface Chain {
   id: number;
   name: string;

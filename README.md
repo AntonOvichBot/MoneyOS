@@ -1,17 +1,18 @@
 # MoneyOS
 
 MoneyOS is an open source programmable money SDK and CLI for developers and AI
-agents. The repo includes balance, send, swap, runtime-composition, wallet,
-and executor code, with the project currently centered on Arbitrum.
+agents. The root package covers runtime composition, balance/send flows,
+wallet/session management, and executor code. Swap now lives as a separate
+tool package, with the project currently centered on Arbitrum.
 
 The project is still early. Package boundaries and some APIs are still settling,
 but the repo is structured so each major surface can evolve independently.
 
 ## What lives in this repo
 
-- `moneyos`: the root SDK + CLI package
+- `moneyos`: the root SDK + CLI package for runtime, wallet, balance, and send
 - `@moneyos/core`: runtime interfaces, shared types, chain/token registries
-- `@moneyos/tool-swap`: swap execution tool and provider surface
+- `@moneyos/tool-swap`: canonical swap tool package and Odos provider in this repo workspace
 
 ## CLI
 
@@ -29,7 +30,6 @@ moneyos backup status
 moneyos keystore status
 moneyos balance <token> [--address 0x...]
 moneyos send <amount> <token> <to>
-moneyos swap <amount> <tokenIn> <tokenOut>
 ```
 
 For the full command surface and flag details, run `moneyos --help`.
@@ -64,12 +64,42 @@ The runtime seam is intentionally small. `createMoneyOS` can also take injected
 `execute`, `read`, and `assets` implementations, which is how external packages
 plug in.
 
+Swap is no longer built into the root SDK or CLI. The canonical implementation
+lives in the `@moneyos/tool-swap` workspace package in this repo. That package
+is not published on npm yet, so use it from this monorepo, a git dependency,
+or another local build. It executes against `moneyos.runtime`:
+
+```ts
+import { createMoneyOS } from "moneyos";
+import { executeSwap, OdosProvider } from "@moneyos/tool-swap";
+
+const moneyos = createMoneyOS({
+  chainId: 42161,
+  privateKey: process.env.MONEYOS_PRIVATE_KEY as `0x${string}`,
+});
+
+const result = await executeSwap(
+  {
+    tokenIn: "USDC",
+    tokenOut: "RYZE",
+    amount: "1",
+    provider: new OdosProvider(),
+    chainId: 42161,
+  },
+  moneyos.runtime,
+);
+
+console.log(result.hash);
+```
+
 ## Published npm package
 
 `moneyos` is published on npm. `npm install moneyos` and `npx moneyos` give
-you the latest tagged release, not unreleased commits on `main`. If you want
-work that has not shipped in a tagged release yet, clone the repo and build
-from source.
+you the latest tagged release, not unreleased commits on `main`.
+
+`@moneyos/tool-swap` is not published on npm yet. If you want the swap tool
+today, clone the repo and build from source, or consume the workspace package
+through a git/local dependency.
 
 ## Current wallet model
 
@@ -152,7 +182,7 @@ What it does not protect against:
 
 ## Known operational limitations
 
-- If a session-backed `send` or `swap` returns a timeout or disconnect error,
+- If a session-backed write command returns a timeout or disconnect error,
   do not assume nothing was broadcast. Verify on-chain before retrying.
 - PR #12 fixed the common 750ms false-timeout path, but client-disconnect
   detection and request idempotency are still follow-up work.
@@ -199,7 +229,7 @@ What still needs more hands-on validation:
 
 - live session-backed ETH send
 - live session-backed ERC-20 send
-- live session-backed swap
+- live execution of external tools against the session-backed runtime seam
 - more live usage of the encrypted-wallet/auth/backup flow in a real terminal
 
 ## Development
@@ -214,9 +244,11 @@ npm run lint
 npm run build
 ```
 
-The repo currently uses npm workspaces. Before any npm release, verify the
-packed tarballs with `npm pack --dry-run` and confirm publish-time dependency
-resolution for the extracted workspace packages.
+The repo currently uses npm workspaces. Test runs build `@moneyos/core` and
+`@moneyos/tool-swap` first so the swap tests exercise the real workspace
+package boundary instead of source-relative imports. Before any npm release,
+verify the packed tarballs with `npm pack --dry-run` and confirm publish-time
+dependency resolution for the extracted workspace packages.
 
 ## License
 

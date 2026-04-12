@@ -1,9 +1,8 @@
 import type { Address, Hex } from "viem";
-import type { SwapProvider, SwapQuote } from "@moneyos/core";
+import { NATIVE_TOKEN_ADDRESS } from "@moneyos/core";
+import type { SwapProvider, SwapQuote } from "../types.js";
 
 const ODOS_API = "https://api.odos.xyz";
-const NATIVE_TOKEN_ADDRESS =
-  "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as Address;
 const ODOS_NATIVE_ADDRESS =
   "0x0000000000000000000000000000000000000000" as Address;
 
@@ -21,7 +20,12 @@ interface OdosAssembleResponse {
   };
 }
 
-export class OdosProvider implements SwapProvider {
+interface OdosQuote extends SwapQuote {
+  pathId: string;
+  sender: Address;
+}
+
+export class OdosProvider implements SwapProvider<OdosQuote> {
   name = "odos";
   private apiKey?: string;
 
@@ -40,7 +44,7 @@ export class OdosProvider implements SwapProvider {
     amount: bigint;
     sender: Address;
     slippage?: number;
-  }): Promise<SwapQuote & { pathId: string; sender: Address }> {
+  }): Promise<OdosQuote> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -84,7 +88,6 @@ export class OdosProvider implements SwapProvider {
       tokenOut: params.tokenOut,
       amountIn: params.amount.toString(),
       expectedOut: data.outAmounts[0],
-      router: "" as Address,
       chainId: params.chainId,
       pathId: data.pathId,
       sender: params.sender,
@@ -92,7 +95,7 @@ export class OdosProvider implements SwapProvider {
   }
 
   async getCalldata(
-    quote: SwapQuote & { pathId: string; sender: Address },
+    quote: OdosQuote,
   ): Promise<{ to: Address; data: Hex; value: bigint }> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

@@ -4,13 +4,10 @@ import {
   encodeFunctionData,
 } from "viem";
 import type {
-  ReadClient,
-  ExecutionClient,
-  AssetRegistry,
+  ActionContext,
   MoneyOSAction,
-  SwapProvider,
-  SwapResult,
 } from "@moneyos/core";
+import type { SwapProvider, SwapResult } from "./types.js";
 
 const ERC20_ABI = [
   {
@@ -35,18 +32,18 @@ const ERC20_ABI = [
   },
 ] as const;
 
-export interface SwapInput {
+export interface SwapInput<P extends SwapProvider = SwapProvider> {
   tokenIn: string;
   tokenOut: string;
   amount: string;
-  provider: SwapProvider;
+  provider: P;
   chainId: number;
   slippage?: number;
 }
 
-async function executeSwap(
-  input: SwapInput,
-  ctx: { read: ReadClient; execute: ExecutionClient; assets: AssetRegistry },
+export async function executeSwap<P extends SwapProvider>(
+  input: SwapInput<P>,
+  ctx: ActionContext,
 ): Promise<SwapResult> {
   const { tokenIn, tokenOut, amount, provider, chainId, slippage } = input;
   const { read, execute, assets } = ctx;
@@ -116,7 +113,7 @@ async function executeSwap(
 export const swapAction: MoneyOSAction<SwapInput, SwapResult> = {
   name: "swap",
   description: "Swap tokens via a DEX provider",
-  run: (input, ctx) => executeSwap(input, ctx),
+  run: executeSwap,
 };
 
 export function createSwapTool() {

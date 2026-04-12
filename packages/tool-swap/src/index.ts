@@ -1,3 +1,8 @@
 export { OdosProvider } from "./providers/odos.js";
-export { swapAction, createSwapTool } from "./tool.js";
+export { executeSwap, swapAction, createSwapTool } from "./tool.js";
+export type {
+  SwapProvider,
+  SwapQuote,
+  SwapResult,
+} from "./types.js";
 export type { SwapInput } from "./tool.js";

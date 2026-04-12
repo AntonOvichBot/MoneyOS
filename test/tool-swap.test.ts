@@ -1,34 +1,48 @@
-import { describe, it, expect, vi } from "vitest";
-import { generatePrivateKey } from "viem/accounts";
-import { executeSwap } from "../src/tools/swap.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { Address, Hex } from "viem";
 import {
-  MoneyOS,
-  createMoneyOS,
   NATIVE_TOKEN_ADDRESS,
+  getChain,
+  getToken,
   getTokenAddress,
-} from "../src/index.js";
+  type AssetRegistry,
+  type ExecutionClient,
+  type ReadClient,
+} from "@moneyos/core";
 import type {
-  ReadClient,
-  ExecutionClient,
-  AssetRegistry,
   SwapProvider,
-} from "../src/index.js";
+  SwapQuote,
+} from "@moneyos/tool-swap";
+import {
+  OdosProvider,
+  createSwapTool,
+  executeSwap,
+  swapAction,
+} from "@moneyos/tool-swap";
+import { MoneyOS } from "../src/index.js";
 
-const TEST_KEY = generatePrivateKey();
+const SENDER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Address;
+const ROUTER = "0x1111111111111111111111111111111111111111" as Address;
+const TX_HASH =
+  "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890" as Hex;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 function mockProvider(opts?: { native?: boolean }): SwapProvider {
   return {
     name: "mock",
     getQuote: vi.fn().mockResolvedValue({
-      tokenIn: "0xTokenIn",
-      tokenOut: "0xTokenOut",
+      tokenIn: getTokenAddress("USDC", 42161)!,
+      tokenOut: getTokenAddress("RYZE", 42161)!,
       amountIn: "1000000",
       expectedOut: "500000000000000000",
-      router: "0x0000000000000000000000000000000000000000",
       chainId: 42161,
     }),
     getCalldata: vi.fn().mockResolvedValue({
-      to: "0x1111111111111111111111111111111111111111",
+      to: ROUTER,
       data: "0xdeadbeef",
       value: opts?.native ? 1000000n : 0n,
     }),
@@ -45,9 +59,9 @@ function mockRead(): ReadClient {
 function mockExecute(): ExecutionClient {
   return {
     mode: "eoa",
-    getAddress: () => "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as `0x${string}`,
+    getAddress: () => SENDER,
     send: vi.fn().mockResolvedValue({
-      hash: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+      hash: TX_HASH,
       chainId: 42161,
     }),
     capabilities: () => ({
@@ -60,25 +74,9 @@ function mockExecute(): ExecutionClient {
 
 function mockAssets(): AssetRegistry {
   return {
-    getToken: (symbol: string) => {
-      if (symbol.toUpperCase() === "USDC")
-        return { symbol: "USDC", name: "USD Coin", decimals: 6, addresses: {} };
-      if (symbol.toUpperCase() === "RYZE")
-        return { symbol: "RYZE", name: "RYZE", decimals: 18, addresses: {} };
-      if (symbol.toUpperCase() === "ETH")
-        return { symbol: "ETH", name: "Ether", decimals: 18, addresses: {} };
-      return undefined;
-    },
-    getTokenAddress: (symbol: string, chainId: number) => {
-      if (symbol.toUpperCase() === "USDC" && chainId === 42161)
-        return "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" as `0x${string}`;
-      if (symbol.toUpperCase() === "RYZE" && chainId === 42161)
-        return "0x7712da72127d5dD213B621497D6E4899d5989e5C" as `0x${string}`;
-      if (symbol.toUpperCase() === "ETH" && chainId === 42161)
-        return NATIVE_TOKEN_ADDRESS;
-      return undefined;
-    },
-    getChain: () => undefined,
+    getToken,
+    getTokenAddress,
+    getChain,
     nativeTokenAddress: NATIVE_TOKEN_ADDRESS,
   };
 }
@@ -115,7 +113,7 @@ describe("executeSwap", () => {
 
     // Second call is the swap (to router, with data)
     const swapCall = (execute.send as ReturnType<typeof vi.fn>).mock.calls[1][0];
-    expect(swapCall.to).toBe("0x1111111111111111111111111111111111111111");
+    expect(swapCall.to).toBe(ROUTER);
     expect(swapCall.data).toBe("0xdeadbeef");
 
     expect(result.tokenIn).toBe("USDC");
@@ -128,6 +126,13 @@ describe("executeSwap", () => {
     const execute = mockExecute();
     const assets = mockAssets();
     const provider = mockProvider({ native: true });
+    (provider.getQuote as ReturnType<typeof vi.fn>).mockResolvedValue({
+      tokenIn: NATIVE_TOKEN_ADDRESS,
+      tokenOut: getTokenAddress("USDC", 42161)!,
+      amountIn: "1000000000000000000",
+      expectedOut: "1000000",
+      chainId: 42161,
+    } satisfies SwapQuote);
 
     const result = await executeSwap(
       {
@@ -153,6 +158,82 @@ describe("executeSwap", () => {
     expect(result.tokenOut).toBe("USDC");
   });
 
+  it("skips approve when allowance already covers the input amount", async () => {
+    const read = createCoveredAllowanceRead();
+    const execute = mockExecute();
+    const assets = mockAssets();
+    const provider = mockProvider();
+
+    const result = await executeSwap(
+      {
+        tokenIn: "USDC",
+        tokenOut: "RYZE",
+        amount: "1",
+        provider,
+        chainId: 42161,
+      },
+      { read, execute, assets },
+    );
+
+    expect(read.readContract).toHaveBeenCalledOnce();
+    expect(execute.send).toHaveBeenCalledOnce();
+    expect(execute.send).toHaveBeenCalledWith({
+      to: ROUTER,
+      data: "0xdeadbeef",
+      value: 0n,
+      chainId: 42161,
+    });
+    expect(result.amountOut).toBe("0.5");
+  });
+
+  it("supports provider-specific quote state without lying in the base quote type", async () => {
+    type ProviderQuote = SwapQuote & {
+      pathId: string;
+      router: Address;
+    };
+
+    const read = mockRead();
+    const execute = mockExecute();
+    const assets = mockAssets();
+    const provider: SwapProvider<ProviderQuote> = {
+      name: "stateful-mock",
+      getQuote: vi.fn().mockResolvedValue({
+        tokenIn: getTokenAddress("USDC", 42161)!,
+        tokenOut: getTokenAddress("RYZE", 42161)!,
+        amountIn: "1000000",
+        expectedOut: "500000000000000000",
+        chainId: 42161,
+        pathId: "path-1",
+        router: ROUTER,
+      }),
+      getCalldata: vi.fn().mockImplementation(async (quote) => ({
+        to: quote.router,
+        data: quote.pathId === "path-1" ? "0xdeadbeef" : "0x",
+        value: 0n,
+      })),
+    };
+
+    const result = await executeSwap(
+      {
+        tokenIn: "USDC",
+        tokenOut: "RYZE",
+        amount: "1",
+        provider,
+        chainId: 42161,
+      },
+      { read, execute, assets },
+    );
+
+    expect(provider.getQuote).toHaveBeenCalledOnce();
+    expect(provider.getCalldata).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pathId: "path-1",
+        router: ROUTER,
+      }),
+    );
+    expect(result.amountOut).toBe("0.5");
+  });
+
   it("throws for unknown token", async () => {
     const read = mockRead();
     const execute = mockExecute();
@@ -172,34 +253,124 @@ describe("executeSwap", () => {
       ),
     ).rejects.toThrow("Token FAKE not found");
   });
-});
 
-describe("MoneyOS.swap() compatibility", () => {
-  it("delegates to executeSwap via runtime seam", () => {
-    const m = createMoneyOS({ chainId: 42161, privateKey: TEST_KEY });
-    // swap() exists and is callable (would need real RPC to actually execute)
-    expect(typeof m.swap).toBe("function");
+  it("executes through the root runtime seam without a root swap helper", async () => {
+    const read = mockRead();
+    const execute = mockExecute();
+    const moneyos = new MoneyOS({
+      chainId: 42161,
+      read,
+      execute,
+    });
+
+    const result = await executeSwap(
+      {
+        tokenIn: "USDC",
+        tokenOut: "RYZE",
+        amount: "1",
+        provider: mockProvider(),
+        chainId: 42161,
+      },
+      moneyos.runtime,
+    );
+
+    expect(result.hash).toBe(TX_HASH);
+    expect(execute.send).toHaveBeenCalledTimes(2);
   });
 });
 
-describe("createSwapTool shape", () => {
-  it("returns tool with name, version, actions", async () => {
-    // Import from the shared swap helper (tool-swap package re-exports this)
-    const tool = {
-      name: "swap" as const,
-      version: "0.1.0",
-      actions: {
-        swap: {
-          name: "swap",
-          description: "Swap tokens via a DEX provider",
-          run: executeSwap,
-        },
-      },
-    };
+describe("@moneyos/tool-swap exports", () => {
+  it("exports executeSwap, swapAction, and createSwapTool with the canonical surface", () => {
+    const tool = createSwapTool();
 
     expect(tool.name).toBe("swap");
     expect(tool.version).toBe("0.1.0");
-    expect(tool.actions.swap).toBeDefined();
-    expect(tool.actions.swap.name).toBe("swap");
+    expect(tool.actions.swap).toBe(swapAction);
+    expect(tool.actions.swap.run).toBe(executeSwap);
+  });
+
+  it("OdosProvider performs quote and calldata flow with core native token wiring", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          pathId: "path-1",
+          outAmounts: ["1234500"],
+          outValues: [1],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          transaction: {
+            to: ROUTER,
+            data: "0xdeadbeef",
+            value: "7",
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new OdosProvider({ apiKey: "secret" });
+    const quote = await provider.getQuote({
+      chainId: 42161,
+      tokenIn: NATIVE_TOKEN_ADDRESS,
+      tokenOut: getTokenAddress("USDC", 42161)!,
+      amount: 1000000000000000000n,
+      sender: SENDER,
+      slippage: 0.5,
+    });
+    const calldata = await provider.getCalldata({
+      ...quote,
+      pathId: "path-1",
+      sender: SENDER,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "https://api.odos.xyz/sor/quote/v2",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer secret",
+        },
+      }),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toMatchObject({
+      chainId: 42161,
+      inputTokens: [
+        {
+          tokenAddress: "0x0000000000000000000000000000000000000000",
+          amount: "1000000000000000000",
+        },
+      ],
+      outputTokens: [
+        {
+          tokenAddress: getTokenAddress("USDC", 42161),
+          proportion: 1,
+        },
+      ],
+      userAddr: SENDER,
+      slippageLimitPercent: 0.5,
+    });
+    expect(quote.expectedOut).toBe("1234500");
+    expect(calldata).toEqual({
+      to: ROUTER,
+      data: "0xdeadbeef",
+      value: 7n,
+    });
   });
 });
+
+function createCoveredAllowanceRead(): ReadClient & {
+  getBalance: ReturnType<typeof vi.fn>;
+  readContract: ReturnType<typeof vi.fn>;
+} {
+  return {
+    getBalance: vi.fn().mockResolvedValue(1000000000000000000n),
+    readContract: vi.fn().mockResolvedValue(1000000n),
+  };
+}

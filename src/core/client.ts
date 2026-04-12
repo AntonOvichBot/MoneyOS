@@ -8,8 +8,6 @@ import type {
   MoneyOSConfig,
   Balance,
   SendResult,
-  SwapProvider,
-  SwapResult,
   ReadClient,
   ExecutionClient,
   AssetRegistry,
@@ -24,7 +22,6 @@ import {
   NATIVE_TOKEN_ADDRESS,
 } from "@moneyos/core";
 import { ViemReadClient, EOAExecutor } from "./eoa.js";
-import { executeSwap } from "../tools/swap.js";
 
 const ERC20_ABI = [
   {
@@ -218,21 +215,5 @@ export class MoneyOS {
       token: tokenInfo.symbol,
       chainId,
     };
-  }
-
-  async swap(
-    tokenIn: string,
-    tokenOut: string,
-    amount: string,
-    provider: SwapProvider,
-    options?: { chainId?: number; slippage?: number },
-  ): Promise<SwapResult> {
-    const execute = this.requireExecutor();
-    const chainId = options?.chainId ?? this.runtimeConfig.defaultChainId;
-
-    return executeSwap(
-      { tokenIn, tokenOut, amount, provider, chainId, slippage: options?.slippage },
-      { read: this.read, execute, assets: this.assets },
-    );
   }
 }

@@ -1,5 +1,4 @@
 export { MoneyOS } from "./core/client.js";
-export { OdosProvider } from "./providers/odos.js";
 
 // Runtime implementations
 export { ViemReadClient, EOAExecutor } from "./core/eoa.js";
@@ -28,9 +27,6 @@ export type {
   MoneyOSConfig,
   Balance,
   SendResult,
-  SwapQuote,
-  SwapResult,
-  SwapProvider,
   Chain,
   Token,
   // Runtime

@@ -8,21 +8,18 @@ import {
 import {
   EOAExecutor,
   MoneyOS,
-  NATIVE_TOKEN_ADDRESS,
   ViemReadClient,
   getTokenAddress,
 } from "../src/index.js";
 import type {
   ExecutionClient,
   ReadClient,
-  SwapProvider,
 } from "../src/index.js";
 
 const TEST_KEY: Hex =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const SENDER = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Address;
 const RECIPIENT = "0x1111111111111111111111111111111111111111" as Address;
-const ROUTER = "0x2222222222222222222222222222222222222222" as Address;
 const TX_HASH =
   "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890" as Hex;
 
@@ -72,30 +69,6 @@ function createMockExecutor(): ExecutionClient & {
       sponsoredGas: true,
       batching: false,
       simulation: false,
-    }),
-  };
-}
-
-function createMockSwapProvider(): SwapProvider & {
-  getQuote: ReturnType<typeof vi.fn>;
-  getCalldata: ReturnType<typeof vi.fn>;
-} {
-  return {
-    name: "mock",
-    getQuote: vi.fn().mockResolvedValue({
-      tokenIn: getTokenAddress("USDC", 42161)!,
-      tokenOut: getTokenAddress("RYZE", 42161)!,
-      amountIn: parseUnits("1", 6).toString(),
-      expectedOut: parseUnits("0.5", 18).toString(),
-      router: ROUTER,
-      chainId: 42161,
-      pathId: "mock-path",
-      sender: SENDER,
-    }),
-    getCalldata: vi.fn().mockResolvedValue({
-      to: ROUTER,
-      data: "0xdeadbeef" as Hex,
-      value: 0n,
     }),
   };
 }
@@ -216,90 +189,6 @@ describe("MoneyOS operations", () => {
     });
   });
 
-  it("swap() uses the configured runtime clients and asset registry", async () => {
-    const read = createMockReadClient({
-      contractResult: 0n,
-    });
-    const executor = createMockExecutor();
-    const provider = createMockSwapProvider();
-    const moneyos = new MoneyOS({
-      chainId: 42161,
-      read,
-      execute: executor,
-    });
-
-    const result = await moneyos.swap("USDC", "RYZE", "1", provider, {
-      slippage: 0.5,
-    });
-
-    expect(provider.getQuote).toHaveBeenCalledOnce();
-    expect(provider.getQuote).toHaveBeenCalledWith({
-      chainId: 42161,
-      tokenIn: getTokenAddress("USDC", 42161),
-      tokenOut: getTokenAddress("RYZE", 42161),
-      amount: parseUnits("1", 6),
-      sender: SENDER,
-      slippage: 0.5,
-    });
-    expect(read.readContract).toHaveBeenCalledOnce();
-    expect(read.readContract).toHaveBeenCalledWith({
-      address: getTokenAddress("USDC", 42161),
-      abi: expect.any(Array),
-      functionName: "allowance",
-      args: [SENDER, ROUTER],
-      chainId: 42161,
-    });
-    expect(executor.send).toHaveBeenCalledTimes(2);
-    expect(executor.send).toHaveBeenNthCalledWith(1, {
-      to: getTokenAddress("USDC", 42161),
-      data: expect.any(String),
-      chainId: 42161,
-    });
-    expect(executor.send).toHaveBeenNthCalledWith(2, {
-      to: ROUTER,
-      data: "0xdeadbeef",
-      value: 0n,
-      chainId: 42161,
-    });
-    expect(result).toMatchObject({
-      hash: TX_HASH,
-      tokenIn: "USDC",
-      tokenOut: "RYZE",
-      amountIn: "1",
-      amountOut: "0.5",
-      chainId: 42161,
-    });
-  });
-
-  it("swap() skips approval when allowance already covers the input amount", async () => {
-    const read = createMockReadClient({
-      contractResult: parseUnits("5", 6),
-    });
-    const executor = createMockExecutor();
-    const provider = createMockSwapProvider();
-    const moneyos = new MoneyOS({
-      chainId: 42161,
-      read,
-      execute: executor,
-    });
-
-    const result = await moneyos.swap("USDC", "RYZE", "1", provider);
-
-    expect(read.readContract).toHaveBeenCalledOnce();
-    expect(executor.send).toHaveBeenCalledOnce();
-    expect(executor.send).toHaveBeenCalledWith({
-      to: ROUTER,
-      data: "0xdeadbeef",
-      value: 0n,
-      chainId: 42161,
-    });
-    expect(result).toMatchObject({
-      hash: TX_HASH,
-      amountIn: "1",
-      amountOut: "0.5",
-      chainId: 42161,
-    });
-  });
 });
 
 describe("unsupported chain guards", () => {
