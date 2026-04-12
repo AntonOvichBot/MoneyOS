@@ -39,12 +39,12 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   program.addCommand(createAddToolCommand(toolManager));
   program.addCommand(createRemoveToolCommand(toolManager));
   program.addCommand(createToolsCommand(toolManager));
-  toolManager.mountInstalledToolCommands(program);
   program
     .command("__session-daemon", { hidden: true })
     .action(async () => {
       await runSessionDaemonProcess();
     });
+  toolManager.mountInstalledToolCommands(program);
 
   return program;
 }

@@ -351,6 +351,70 @@ describe("cli tool manager", () => {
     expect(manager.getRegistryEntries()).toEqual([]);
   });
 
+  it("existing tool homes migrate shared dependency versions on access", () => {
+    const harness = registerHarness({});
+    writeDependencies(harness.paths, {
+      "@moneyos/core": "^0.1.0",
+      viem: "^2.45.1",
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      sharedToolHomeDependencies: {
+        "@moneyos/core": "^0.2.0",
+        viem: "^2.50.0",
+      },
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    expect(readDependencies(harness.paths)).toEqual({
+      "@moneyos/core": "^0.1.0",
+      viem: "^2.45.1",
+    });
+
+    expect(manager.getRegistryEntries()).toEqual([]);
+    expect(readDependencies(harness.paths)).toEqual({
+      "@moneyos/core": "^0.2.0",
+      viem: "^2.50.0",
+    });
+  });
+
+  it("new root commands become reserved without updating manager code", async () => {
+    const harness = registerHarness({
+      "@moneyos/portfolio-tool": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "portfolio",
+          commandPath: ["portfolio"],
+        }),
+      },
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    const program = new Command();
+    program.addCommand(new Command("portfolio"));
+    manager.mountInstalledToolCommands(program);
+
+    await expect(manager.addTool("@moneyos/portfolio-tool")).rejects.toThrow(
+      /reserved root command collision for portfolio/i,
+    );
+    expect(harness.uninstalls).toEqual(["@moneyos/portfolio-tool"]);
+  });
+
   it("install fails on command-path collision with another installed tool", async () => {
     const harness = registerHarness({
       "@moneyos/swap": {

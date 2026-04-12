@@ -2,15 +2,14 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
 import type { MoneyOSCliContext, MoneyOSCliTool } from "../../cli-tool.js";
 import { getToolHomeDir, getToolHomePackageJsonPath, getToolRegistryPath } from "../config.js";
 import { createMoneyOSCliContext } from "./runtime.js";
 
-const RESERVED_ROOT_COMMANDS = new Set(["init", "auth", "backup", "balance", "send", "keystore", "add", "remove", "tools", "help", "__session-daemon"]);
+const DEFAULT_RESERVED_ROOT_COMMANDS = new Set(["init", "auth", "backup", "balance", "send", "keystore", "add", "remove", "tools", "help", "__session-daemon"]);
 const FIRST_PARTY_TOOL_ALIASES: Record<string, string> = { swap: "@moneyos/swap" };
-const SHARED_TOOL_HOME_DEPENDENCIES = { "@moneyos/core": "^0.1.0", viem: "^2.45.1" };
 const VALID_COMMAND_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 
 export interface ToolRegistryEntry {
@@ -25,6 +24,13 @@ export interface ToolRegistryEntry {
 type ToolStatus = ToolRegistryEntry & { state: "ok" | "broken" | "conflict"; problems: string[] };
 type Paths = { rootDir: string; packageJsonPath: string; registryPath: string };
 type LoadedTool = ToolRegistryEntry & { createCommand: MoneyOSCliTool["createCommand"] };
+type SharedToolHomeDependencies = Record<string, string>;
+type RootPackageMetadata = {
+  dependencies?: Record<string, string>;
+  moneyos?: {
+    toolHomeDependencies?: Record<string, string>;
+  };
+};
 
 const getPaths = (): Paths => ({
   rootDir: getToolHomeDir(),
@@ -32,7 +38,41 @@ const getPaths = (): Paths => ({
   registryPath: getToolRegistryPath(),
 });
 
-function ensureToolHome(paths: Paths): void {
+function findRootPackageJsonPath(): string {
+  let currentDir = dirname(fileURLToPath(import.meta.url));
+  while (true) {
+    const candidate = join(currentDir, "package.json");
+    if (existsSync(candidate)) {
+      const packageJson = JSON.parse(readFileSync(candidate, "utf8")) as { name?: string };
+      if (packageJson.name === "moneyos") return candidate;
+    }
+    const parentDir = dirname(currentDir);
+    if (parentDir === currentDir) {
+      throw new Error("Could not find the root moneyos package.json.");
+    }
+    currentDir = parentDir;
+  }
+}
+
+function getSharedToolHomeDependencies(): SharedToolHomeDependencies {
+  const rootPackageJsonPath = findRootPackageJsonPath();
+  const packageJson = JSON.parse(readFileSync(rootPackageJsonPath, "utf8")) as RootPackageMetadata;
+  const coreVersion = packageJson.moneyos?.toolHomeDependencies?.["@moneyos/core"];
+  const viemVersion = packageJson.dependencies?.viem;
+  if (typeof coreVersion !== "string" || typeof viemVersion !== "string") {
+    throw new Error(`Root package metadata at ${rootPackageJsonPath} is missing tool-home dependency versions.`);
+  }
+  return { "@moneyos/core": coreVersion, viem: viemVersion };
+}
+
+function collectReservedRootCommandNames(program: Command): Set<string> {
+  return new Set([
+    "help",
+    ...program.commands.flatMap((command) => [command.name(), ...command.aliases()]),
+  ]);
+}
+
+function ensureToolHome(paths: Paths, sharedToolHomeDependencies: SharedToolHomeDependencies): void {
   if (!existsSync(paths.rootDir)) mkdirSync(paths.rootDir, { recursive: true, mode: 0o700 });
   const exists = existsSync(paths.packageJsonPath);
   const parsed = exists
@@ -50,7 +90,7 @@ function ensureToolHome(paths: Paths): void {
     dependencies: { ...(parsed?.dependencies ?? {}) },
   };
   let changed = !exists;
-  for (const [name, version] of Object.entries(SHARED_TOOL_HOME_DEPENDENCIES)) {
+  for (const [name, version] of Object.entries(sharedToolHomeDependencies)) {
     if (packageJson.dependencies[name] !== version) {
       packageJson.dependencies[name] = version;
       changed = true;
@@ -91,21 +131,9 @@ function parseLoadedTool(packageName: string, packageVersion: string, value: unk
   return { packageName, packageVersion, toolVersion: 1, name: tool.name, commandPath: [...tool.commandPath], description: tool.description, createCommand: tool.createCommand };
 }
 
-function readRegistry(paths: Paths): ToolRegistryEntry[] {
-  ensureToolHome(paths);
-  const parsed = JSON.parse(readFileSync(paths.registryPath, "utf8")) as unknown;
-  if (!Array.isArray(parsed)) throw new Error(`Tool registry at ${paths.registryPath} is invalid.`);
-  return parsed.map(parseRegistryEntry);
-}
-
-function writeRegistry(paths: Paths, entries: ToolRegistryEntry[]): void {
-  ensureToolHome(paths);
-  writeFileSync(paths.registryPath, `${JSON.stringify(entries, null, 2)}\n`, { mode: 0o600 });
-}
-
-function getConflict(entry: ToolRegistryEntry, entries: ToolRegistryEntry[]): string | undefined {
+function getConflict(entry: ToolRegistryEntry, entries: ToolRegistryEntry[], reservedRootCommands: Set<string>): string | undefined {
   const path = entry.commandPath.join(" ");
-  if (RESERVED_ROOT_COMMANDS.has(entry.name) || RESERVED_ROOT_COMMANDS.has(entry.commandPath[0])) {
+  if (reservedRootCommands.has(entry.name) || reservedRootCommands.has(entry.commandPath[0])) {
     return `reserved root command collision for ${path}`;
   }
   for (const other of entries) {
@@ -157,9 +185,14 @@ export function createCliToolManager(params: {
   packageManager?: { install(paths: Paths, spec: string): Promise<void>; uninstall(paths: Paths, packageName: string): Promise<void> };
   moduleLoader?: (paths: Paths, packageName: string) => Promise<{ packageName: string; packageVersion: string; cliTool: unknown }>;
   cliContext?: MoneyOSCliContext;
+  reservedRootCommands?: Iterable<string>;
+  sharedToolHomeDependencies?: SharedToolHomeDependencies;
 } = {}) {
   const paths = params.paths ?? getPaths();
   const cliContext = params.cliContext ?? createMoneyOSCliContext();
+  const sharedToolHomeDependencies = params.sharedToolHomeDependencies ?? getSharedToolHomeDependencies();
+  const sharedToolHomeDependencyNames = new Set(Object.keys(sharedToolHomeDependencies));
+  let reservedRootCommands = new Set(params.reservedRootCommands ?? DEFAULT_RESERVED_ROOT_COMMANDS);
   const install = params.packageManager?.install ?? ((toolPaths: Paths, spec: string) => runNpm(toolPaths, ["install", "--save-exact", "--no-fund", "--no-audit", spec]));
   const uninstall = params.packageManager?.uninstall ?? ((toolPaths: Paths, packageName: string) => runNpm(toolPaths, ["uninstall", "--no-fund", "--no-audit", packageName]));
   const loadInstalledTool = params.moduleLoader
@@ -182,6 +215,16 @@ export function createCliToolManager(params: {
       const matches = entries.filter((entry) => entry.name === input || entry.commandPath.join(" ") === input);
       return matches.length === 1 ? matches[0] : undefined;
     })();
+  const getRegistryEntries = (): ToolRegistryEntry[] => {
+    ensureToolHome(paths, sharedToolHomeDependencies);
+    const parsed = JSON.parse(readFileSync(paths.registryPath, "utf8")) as unknown;
+    if (!Array.isArray(parsed)) throw new Error(`Tool registry at ${paths.registryPath} is invalid.`);
+    return parsed.map(parseRegistryEntry);
+  };
+  const writeRegistryEntries = (entries: ToolRegistryEntry[]): void => {
+    ensureToolHome(paths, sharedToolHomeDependencies);
+    writeFileSync(paths.registryPath, `${JSON.stringify(entries, null, 2)}\n`, { mode: 0o600 });
+  };
 
   async function invoke(entry: ToolRegistryEntry, args: string[]): Promise<void> {
     let command: Command;
@@ -212,18 +255,19 @@ export function createCliToolManager(params: {
 
   return {
     getRegistryEntries(): ToolRegistryEntry[] {
-      return readRegistry(paths);
+      return getRegistryEntries();
     },
     mountInstalledToolCommands(program: Command): void {
       let entries: ToolRegistryEntry[];
       try {
-        entries = readRegistry(paths);
+        entries = getRegistryEntries();
       } catch {
         return;
       }
+      reservedRootCommands = collectReservedRootCommandNames(program);
       const groups = new Map<string, Command>();
       for (const entry of entries) {
-        if (getConflict(entry, entries)) continue;
+        if (getConflict(entry, entries, reservedRootCommands)) continue;
         let parent = program;
         const segments: string[] = [];
         for (const segment of entry.commandPath.slice(0, -1)) {
@@ -249,20 +293,20 @@ export function createCliToolManager(params: {
     },
     async addTool(input: string): Promise<ToolRegistryEntry> {
       const spec = FIRST_PARTY_TOOL_ALIASES[input] ?? input;
-      const entries = readRegistry(paths);
+      const entries = getRegistryEntries();
       const previous = resolveInstalledTool(input, entries);
-      ensureToolHome(paths);
+      ensureToolHome(paths, sharedToolHomeDependencies);
       const before = (JSON.parse(readFileSync(paths.packageJsonPath, "utf8")) as { dependencies?: Record<string, string> }).dependencies ?? {};
       await install(paths, spec);
       const after = (JSON.parse(readFileSync(paths.packageJsonPath, "utf8")) as { dependencies?: Record<string, string> }).dependencies ?? {};
-      const changed = previous?.packageName ?? Object.keys(after).find((name) => before[name] !== after[name] && !(name in SHARED_TOOL_HOME_DEPENDENCIES));
+      const changed = previous?.packageName ?? Object.keys(after).find((name) => before[name] !== after[name] && !sharedToolHomeDependencyNames.has(name));
       try {
         const loaded = await loadInstalledTool(paths, changed ?? spec);
         const next = previous ? entries.filter((entry) => entry.packageName !== previous.packageName) : entries;
-        const conflict = getConflict(loaded, next);
+        const conflict = getConflict(loaded, next, reservedRootCommands);
         if (conflict) throw new Error(conflict);
         const entry = { packageName: loaded.packageName, packageVersion: loaded.packageVersion, toolVersion: loaded.toolVersion, name: loaded.name, commandPath: loaded.commandPath, description: loaded.description };
-        writeRegistry(paths, [...next, entry]);
+        writeRegistryEntries([...next, entry]);
         return entry;
       } catch (error) {
         try {
@@ -275,17 +319,17 @@ export function createCliToolManager(params: {
       }
     },
     async removeTool(input: string): Promise<ToolRegistryEntry> {
-      const entries = readRegistry(paths);
+      const entries = getRegistryEntries();
       const entry = resolveInstalledTool(input, entries);
       if (!entry) throw new Error(`Tool ${input} is not installed.`);
       await uninstall(paths, entry.packageName);
-      writeRegistry(paths, entries.filter((installed) => installed.packageName !== entry.packageName));
+      writeRegistryEntries(entries.filter((installed) => installed.packageName !== entry.packageName));
       return entry;
     },
     async listTools(): Promise<ToolStatus[]> {
-      const entries = readRegistry(paths);
+      const entries = getRegistryEntries();
       const tools = await Promise.all(entries.map(async (entry) => {
-        const conflict = getConflict(entry, entries);
+        const conflict = getConflict(entry, entries, reservedRootCommands);
         if (conflict) return { ...entry, state: "conflict" as const, problems: [conflict] };
         try {
           const loaded = await loadInstalledTool(paths, entry.packageName);
