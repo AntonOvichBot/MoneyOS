@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createProgram } from "../src/cli/index.js";
 import type { MoneyOSCliTool } from "../src/cli-tool.js";
 import {
   createCliToolManager,
+  formatToolStatusTable,
   type ToolRegistryEntry,
 } from "../src/cli/tools/manager.js";
 
@@ -420,6 +421,82 @@ describe("cli tool manager", () => {
     expect(onLoad).not.toHaveBeenCalled();
   });
 
+  it("loads an installed tool directly from the tool home filesystem", async () => {
+    const rootDir = mkdtempSync(join(tmpdir(), "moneyos-real-tool-home-"));
+    cleanupCallbacks.push(() => {
+      rmSync(rootDir, { recursive: true, force: true });
+    });
+    const paths: ToolHomePaths = {
+      rootDir,
+      packageJsonPath: join(rootDir, "package.json"),
+      registryPath: join(rootDir, "registry.json"),
+    };
+
+    writeDependencies(paths, {
+      "@moneyos/fake-tool": "1.2.3",
+    });
+    writeFileSync(
+      paths.registryPath,
+      `${JSON.stringify(
+        [
+          {
+            packageName: "@moneyos/fake-tool",
+            packageVersion: "1.2.3",
+            toolVersion: 1,
+            name: "fake",
+            commandPath: ["fake"],
+            description: "Fake tool",
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+    );
+
+    const packageDir = join(rootDir, "node_modules", "@moneyos", "fake-tool");
+    mkdirSync(packageDir, { recursive: true });
+    writeFileSync(
+      join(packageDir, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@moneyos/fake-tool",
+          version: "1.2.3",
+          type: "module",
+          exports: "./index.js",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    writeFileSync(
+      join(packageDir, "index.js"),
+      `export const moneyosCliTool = {
+  version: 1,
+  name: "fake",
+  commandPath: ["fake"],
+  description: "Fake tool",
+  createCommand(ctx) {
+    return new ctx.Command("fake").action(async () => {});
+  }
+};
+`,
+    );
+
+    const manager = createCliToolManager({
+      paths,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    const program = createProgram({ toolManager: manager });
+    expect(program.commands.map((command) => command.name())).toContain("fake");
+    await expect(
+      program.parseAsync(["node", "moneyos", "fake"]),
+    ).resolves.toBe(program);
+  });
+
   it("invoking a tool command lazy-loads the package on demand", async () => {
     const onInvoke = vi.fn();
     const harness = registerHarness({
@@ -458,6 +535,109 @@ describe("cli tool manager", () => {
     expect(onInvoke).toHaveBeenCalledWith("1", "USDC", "ETH");
   });
 
+  it("mounts nested command paths under shared parent groups", async () => {
+    const onInvoke = vi.fn();
+    const harness = registerHarness({
+      "@sebbank/moneyos-bank": {
+        version: "1.0.0",
+        cliTool: createFakeCliTool({
+          name: "seb",
+          commandPath: ["bank", "seb"],
+          onInvoke,
+        }),
+      },
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await manager.addTool("@sebbank/moneyos-bank");
+
+    const program = createProgram({ toolManager: manager });
+    const bankCommand = program.commands.find((command) => command.name() === "bank");
+
+    expect(bankCommand?.commands.map((command) => command.name())).toContain("seb");
+
+    await program.parseAsync(["node", "moneyos", "bank", "seb", "accounts"]);
+
+    expect(onInvoke).toHaveBeenCalledWith("accounts");
+  });
+
+  it("help output from an installed tool does not fail the root cli", async () => {
+    const harness = registerHarness({
+      "@moneyos/swap": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+        }),
+      },
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    process.exitCode = undefined;
+    await manager.addTool("swap");
+
+    const program = createProgram({ toolManager: manager });
+    await program.parseAsync(["node", "moneyos", "swap", "--help"]);
+
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("invoking a broken installed tool surfaces the repair guidance", async () => {
+    const harness = registerHarness({
+      "@moneyos/swap": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+        }),
+      },
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await manager.addTool("swap");
+    harness.installed.set("@moneyos/swap", {
+      packageName: "@moneyos/swap",
+      packageVersion: "0.2.0",
+      cliTool: createFakeCliTool({
+        name: "swap",
+        commandPath: ["swap"],
+      }),
+    });
+
+    const program = createProgram({ toolManager: manager });
+
+    await expect(
+      program.parseAsync(["node", "moneyos", "swap", "1", "USDC", "ETH"]),
+    ).rejects.toThrow(/Run `moneyos add @moneyos\/swap` to repair it/i);
+  });
+
   it("missing moneyosCliTool export fails install cleanly", async () => {
     const harness = registerHarness({
       "@moneyos/broken-tool": {
@@ -484,6 +664,40 @@ describe("cli tool manager", () => {
 
     await expect(manager.addTool("@moneyos/broken-tool")).rejects.toThrow(
       /does not export `moneyosCliTool`/i,
+    );
+    expect(manager.getRegistryEntries()).toEqual([]);
+  });
+
+  it("invalid moneyosCliTool exports fail install cleanly", async () => {
+    const harness = registerHarness({
+      "@moneyos/invalid-tool": {
+        version: "0.1.0",
+        cliTool: {},
+      },
+    });
+    const moduleLoader = async () => ({
+      packageName: "@moneyos/invalid-tool",
+      packageVersion: "0.1.0",
+      cliTool: {
+        version: 1,
+        name: "invalid",
+        commandPath: ["bad path"],
+        description: "Invalid command path",
+      },
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await expect(manager.addTool("@moneyos/invalid-tool")).rejects.toThrow(
+      /exports an invalid `moneyosCliTool`/i,
     );
     expect(manager.getRegistryEntries()).toEqual([]);
   });
@@ -556,6 +770,104 @@ describe("cli tool manager", () => {
     expect(receivedContext[0]).not.toBe(program);
   });
 
+  it("listTools reports registry conflicts and broken installs without crashing", async () => {
+    const harness = registerHarness({
+      "@moneyos/swap": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+        }),
+      },
+      "@sebbank/moneyos-bank": {
+        version: "1.0.0",
+        cliTool: createFakeCliTool({
+          name: "seb",
+          commandPath: ["bank", "seb"],
+        }),
+      },
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    writeFileSync(
+      harness.paths.registryPath,
+      `${JSON.stringify(
+        [
+          {
+            packageName: "@moneyos/swap",
+            packageVersion: "0.1.0",
+            toolVersion: 1,
+            name: "swap",
+            commandPath: ["swap"],
+            description: "Swap tokens",
+          },
+          {
+            packageName: "@moneyos/swap-route",
+            packageVersion: "0.1.0",
+            toolVersion: 1,
+            name: "swap-route",
+            commandPath: ["swap", "route"],
+            description: "Nested swap route",
+          },
+          {
+            packageName: "@sebbank/moneyos-bank",
+            packageVersion: "1.0.0",
+            toolVersion: 1,
+            name: "seb",
+            commandPath: ["bank", "seb"],
+            description: "SEB bank",
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+    );
+
+    const tools = await manager.listTools();
+
+    expect(tools).toEqual([
+      expect.objectContaining({
+        packageName: "@sebbank/moneyos-bank",
+        state: "broken",
+      }),
+      expect.objectContaining({
+        packageName: "@moneyos/swap",
+        state: "conflict",
+      }),
+      expect.objectContaining({
+        packageName: "@moneyos/swap-route",
+        state: "conflict",
+      }),
+    ]);
+  });
+
+  it("formats tool status tables for empty and problematic registries", () => {
+    expect(formatToolStatusTable([])).toBe("No tools installed.");
+    expect(
+      formatToolStatusTable([
+        {
+          packageName: "@moneyos/swap",
+          packageVersion: "0.1.0",
+          toolVersion: 1,
+          name: "swap",
+          commandPath: ["swap"],
+          description: "Swap tokens",
+          state: "broken",
+          problems: ["installed metadata does not match registry"],
+        },
+      ]),
+    ).toContain("installed metadata does not match registry");
+  });
+
   it("one broken installed tool does not prevent root CLI startup", async () => {
     const harness = registerHarness({
       "@moneyos/swap": {
@@ -601,5 +913,22 @@ describe("cli tool manager", () => {
       expect.arrayContaining(["init", "auth", "swap"]),
     );
     expect(onLoad).not.toHaveBeenCalled();
+  });
+
+  it("malformed tool registries do not crash root cli startup", () => {
+    const harness = registerHarness({});
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    writeFileSync(harness.paths.registryPath, "{}\n");
+
+    expect(() => createProgram({ toolManager: manager })).not.toThrow();
   });
 });

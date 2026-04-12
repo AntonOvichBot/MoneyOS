@@ -81,15 +81,15 @@ describe("MoneyOSCliContext runtime", () => {
   });
 
   it("getRuntime() without requireSession returns a read-only runtime", async () => {
+    const connectLocalSession = vi.fn();
+    const createReadClient = vi.fn().mockReturnValue({
+      getBalance: vi.fn(),
+      readContract: vi.fn(),
+    });
     const ctx = createMoneyOSCliContext({
-      loadConfig: () => ({
-        chainId: 42161,
-      }),
-      connectLocalSession: vi.fn(),
-      createReadClient: vi.fn().mockReturnValue({
-        getBalance: vi.fn(),
-        readContract: vi.fn(),
-      }),
+      loadConfig: () => ({}),
+      connectLocalSession,
+      createReadClient,
       createAssets: vi.fn().mockReturnValue({
         getToken: vi.fn(),
         getTokenAddress: vi.fn(),
@@ -100,6 +100,11 @@ describe("MoneyOSCliContext runtime", () => {
 
     const runtime = await ctx.getRuntime();
 
+    expect(connectLocalSession).not.toHaveBeenCalled();
+    expect(createReadClient).toHaveBeenCalledWith({
+      chainId: 42161,
+      rpcUrl: undefined,
+    });
     expect(() => runtime.execute.getAddress()).toThrow(
       /No signing account configured/i,
     );
@@ -110,5 +115,13 @@ describe("MoneyOSCliContext runtime", () => {
         value: 0n,
       }),
     ).rejects.toThrow(/No signing account configured/i);
+    await expect(runtime.execute.sendBatch([])).rejects.toThrow(
+      /No signing account configured/i,
+    );
+    expect(runtime.execute.capabilities()).toEqual({
+      sponsoredGas: false,
+      batching: false,
+      simulation: false,
+    });
   });
 });
