@@ -32,6 +32,14 @@ function formatBackupStatus(params: {
   return lines.join("\n");
 }
 
+export function getBackupExportPasswordGuidance(): string {
+  return [
+    "This backup is encrypted with the same wallet password as your active wallet.",
+    "You will need that same wallet password to restore it.",
+    "MoneyOS does not store or sync it for you.",
+  ].join(" ");
+}
+
 export const backupCommand = new Command("backup").description(
   "Export, restore, and inspect encrypted wallet backups",
 );
@@ -54,9 +62,7 @@ backupCommand
         allowOverwrite: Boolean(options.force),
       });
       console.log(`Backup exported to ${targetPath}`);
-      console.log(
-        "Save your wallet password in your password manager of choice. MoneyOS does not store or sync it for you.",
-      );
+      console.log(getBackupExportPasswordGuidance());
     } catch (error) {
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;

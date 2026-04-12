@@ -83,8 +83,10 @@ current address.
 Current wallet backup behavior:
 
 - `moneyos init` creates an initial encrypted wallet backup automatically
-- `moneyos backup export` writes another encrypted copy
+- `moneyos backup export` writes another encrypted copy using the same wallet
+  password as the active wallet
 - `moneyos backup restore <path>` restores the encrypted wallet file
+- restore requires that same wallet password
 - restore does not auto-unlock the wallet
 
 Important rule: backup files contain the encrypted wallet, not the raw private
