@@ -33,7 +33,8 @@ It owns:
 - `MoneyOS` runtime composition
 - default viem-based read and execute implementations
 - encrypted local wallet, session, and backup flows
-- root CLI commands for auth, backup, balance, send, and keystore
+- the root CLI surface, including `init`, `auth`, `backup`, `balance`,
+  `send`, and `keystore`
 - the `moneyos.runtime` seam that external tools execute against
 - compatibility re-exports from `@moneyos/core`
 
