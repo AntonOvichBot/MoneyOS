@@ -194,9 +194,12 @@ These are real current-state caveats, not future ideas:
 - PR #12 fixed the common false-timeout path by separating short control
   timeouts from longer on-chain send timeouts. It did not add disconnect-aware
   recovery or replay protection.
-- The session daemon is still effectively pinned to the chain and RPC chosen at
-  unlock time. Cross-chain sends from the same unlocked session are follow-up
-  work, not a supported design guarantee yet.
+- The session daemon is not pinned to a single chain anymore. Each send request
+  carries its own `chainId`, and the daemon builds chain-specific viem clients
+  on demand for the supported chain set.
+- A custom `rpcUrl` passed at unlock still applies only to that session's
+  default chain. Requests for other supported chains fall back to the built-in
+  chain registry RPC URLs.
 
 ## Practical guidance
 

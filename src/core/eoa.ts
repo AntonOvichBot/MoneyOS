@@ -7,10 +7,7 @@ import {
   type Hex,
   type PublicClient,
   type WalletClient,
-  type Chain as ViemChain,
 } from "viem";
-import { arbitrum, mainnet, polygon } from "viem/chains";
-import { getChain } from "@moneyos/core";
 import type {
   CallRequest,
   ExecutionClient,
@@ -19,16 +16,7 @@ import type {
   RuntimeConfig,
 } from "@moneyos/core";
 import { privateKeyToManagedAccount } from "./signer.js";
-
-const viemChainMap: Record<number, ViemChain> = {
-  42161: arbitrum,
-  1: mainnet,
-  137: polygon,
-};
-
-function getViemChain(chainId: number): ViemChain | undefined {
-  return viemChainMap[chainId];
-}
+import { resolveChainTransport } from "./chains.js";
 
 // --- Read ---
 
@@ -43,16 +31,11 @@ export class ViemReadClient implements ReadClient {
   private getClient(chainId: number): PublicClient {
     let client = this.clients.get(chainId);
     if (!client) {
-      const chain = getViemChain(chainId);
-      const chainInfo = getChain(chainId);
-      const rpcUrl =
-        chainId === this.config.defaultChainId
-          ? this.config.rpcUrl
-          : undefined;
+      const { chain, rpcUrl } = resolveChainTransport(chainId, this.config);
 
       client = createPublicClient({
         chain,
-        transport: http(rpcUrl ?? chainInfo?.rpcUrl),
+        transport: http(rpcUrl),
       });
       this.clients.set(chainId, client);
     }
@@ -115,17 +98,12 @@ export class EOAExecutor implements ExecutionClient {
   private getWalletClient(chainId: number): WalletClient {
     let client = this.walletClients.get(chainId);
     if (!client) {
-      const chain = getViemChain(chainId);
-      const chainInfo = getChain(chainId);
-      const rpcUrl =
-        chainId === this.config.defaultChainId
-          ? this.config.rpcUrl
-          : undefined;
+      const { chain, rpcUrl } = resolveChainTransport(chainId, this.config);
 
       client = createWalletClient({
         account: this.signer,
         chain,
-        transport: http(rpcUrl ?? chainInfo?.rpcUrl),
+        transport: http(rpcUrl),
       });
       this.walletClients.set(chainId, client);
     }
@@ -135,16 +113,11 @@ export class EOAExecutor implements ExecutionClient {
   private getPublicClient(chainId: number): PublicClient {
     let client = this.publicClients.get(chainId);
     if (!client) {
-      const chain = getViemChain(chainId);
-      const chainInfo = getChain(chainId);
-      const rpcUrl =
-        chainId === this.config.defaultChainId
-          ? this.config.rpcUrl
-          : undefined;
+      const { chain, rpcUrl } = resolveChainTransport(chainId, this.config);
 
       client = createPublicClient({
         chain,
-        transport: http(rpcUrl ?? chainInfo?.rpcUrl),
+        transport: http(rpcUrl),
       });
       this.publicClients.set(chainId, client);
     }
