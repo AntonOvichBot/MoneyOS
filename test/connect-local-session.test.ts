@@ -139,4 +139,12 @@ describe("connectLocalSession", () => {
       rmSync(baseDir, { recursive: true, force: true });
     }
   });
+
+  it("uses default session paths when no overrides are provided", async () => {
+    // Calling with no options exercises the ?? default branches on lines 16-17.
+    // No real daemon is running at the default path, so this throws.
+    await expect(connectLocalSession()).rejects.toThrow(
+      "No active local MoneyOS session found.",
+    );
+  });
 });
