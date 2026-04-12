@@ -153,6 +153,73 @@ describe("FileEncryptedWalletStore", () => {
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it("rotates the wallet password without changing wallet metadata", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-encrypted-wallet-"));
+    const walletPath = join(tmpDir, "wallet.json");
+    const store = new FileEncryptedWalletStore(walletPath);
+
+    try {
+      await store.save({
+        privateKey: TEST_PK,
+        passphrase: "old secret",
+      });
+
+      const before = await store.exportData();
+      const rotated = await store.rotatePassphrase({
+        oldPassphrase: "old secret",
+        newPassphrase: "new secret phrase",
+      });
+      const after = await store.exportData();
+
+      expect(rotated).toEqual({
+        version: before.version,
+        kind: before.kind,
+        address: before.address,
+        createdAt: before.createdAt,
+      });
+      expect(after.version).toBe(before.version);
+      expect(after.kind).toBe(before.kind);
+      expect(after.address).toBe(before.address);
+      expect(after.createdAt).toBe(before.createdAt);
+      expect(after.addressProof).toBe(before.addressProof);
+      expect(after.crypto.ciphertext).not.toBe(before.crypto.ciphertext);
+      expect(await store.decrypt("new secret phrase")).toBe(TEST_PK);
+      await expect(store.decrypt("old secret")).rejects.toThrow(
+        /invalid password or corrupted wallet/i,
+      );
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves the wallet unchanged when password rotation uses the wrong current password", async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-encrypted-wallet-"));
+    const walletPath = join(tmpDir, "wallet.json");
+    const store = new FileEncryptedWalletStore(walletPath);
+
+    try {
+      await store.save({
+        privateKey: TEST_PK,
+        passphrase: "old secret",
+      });
+
+      const before = await store.exportData();
+
+      await expect(
+        store.rotatePassphrase({
+          oldPassphrase: "wrong secret",
+          newPassphrase: "new secret phrase",
+        }),
+      ).rejects.toThrow(/invalid password or corrupted wallet/i);
+
+      const after = await store.exportData();
+      expect(after).toEqual(before);
+      expect(await store.decrypt("old secret")).toBe(TEST_PK);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("FileBackupProvider", () => {

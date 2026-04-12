@@ -1,6 +1,10 @@
 import { Command } from "commander";
-import { FileEncryptedWalletStore } from "../../core/encrypted-wallet.js";
 import {
+  FileEncryptedWalletStore,
+  type EncryptedWalletStore,
+} from "../../core/encrypted-wallet.js";
+import {
+  type CLIConfig,
   getSessionSocketPath,
   getSessionTokenPath,
   getWalletPath,
@@ -31,8 +35,92 @@ function formatSessionStatus(params: {
   return lines.join("\n");
 }
 
+export interface ChangePasswordCommandDependencies {
+  loadFileConfig: () => CLIConfig;
+  getWalletPath: (config?: CLIConfig) => string;
+  createWalletStore: (walletPath: string) => EncryptedWalletStore;
+  promptHidden: (question: string) => Promise<string>;
+  lockSession: (socketPath: string, tokenPath: string) => Promise<boolean>;
+  getSessionSocketPath: () => string;
+  getSessionTokenPath: () => string;
+  log: (message: string) => void;
+  error: (message: string) => void;
+}
+
+const defaultChangePasswordCommandDependencies: ChangePasswordCommandDependencies = {
+  loadFileConfig,
+  getWalletPath,
+  createWalletStore: (walletPath) => new FileEncryptedWalletStore(walletPath),
+  promptHidden,
+  lockSession,
+  getSessionSocketPath,
+  getSessionTokenPath,
+  log: (message) => console.log(message),
+  error: (message) => console.error(message),
+};
+
+export async function runChangePasswordCommand(
+  deps: ChangePasswordCommandDependencies = defaultChangePasswordCommandDependencies,
+): Promise<void> {
+  const config = deps.loadFileConfig();
+  const walletPath = deps.getWalletPath(config);
+  const wallet = deps.createWalletStore(walletPath);
+
+  if (!wallet.exists()) {
+    deps.error("No encrypted wallet found. Run `moneyos init` first.");
+    process.exitCode = 1;
+    return;
+  }
+
+  try {
+    const currentPassphrase = await deps.promptHidden("Current wallet password: ");
+    if (currentPassphrase.length === 0) {
+      throw new Error("Current wallet password cannot be empty.");
+    }
+
+    const newPassphrase = await deps.promptHidden("New wallet password: ");
+    if (newPassphrase.length < 8) {
+      throw new Error("New wallet password must be at least 8 characters long.");
+    }
+    if (newPassphrase === currentPassphrase) {
+      throw new Error(
+        "New wallet password must differ from the current password.",
+      );
+    }
+
+    const confirmPassphrase = await deps.promptHidden(
+      "Confirm new wallet password: ",
+    );
+    if (newPassphrase !== confirmPassphrase) {
+      throw new Error("New wallet password confirmation did not match.");
+    }
+
+    const metadata = await wallet.rotatePassphrase({
+      oldPassphrase: currentPassphrase,
+      newPassphrase,
+    });
+    await deps.lockSession(
+      deps.getSessionSocketPath(),
+      deps.getSessionTokenPath(),
+    );
+
+    deps.log("Wallet password changed.");
+    deps.log(`Address:   ${metadata.address}`);
+    deps.log(formatSessionStatus({ state: "locked" }));
+    deps.log(
+      "Existing backup files and exported copies still require the old wallet password.",
+    );
+    deps.log(
+      "Run `moneyos backup export` to create a backup encrypted with the new wallet password.",
+    );
+  } catch (error) {
+    deps.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+}
+
 export const authCommand = new Command("auth").description(
-  "Unlock, inspect, and lock the local MoneyOS wallet session",
+  "Unlock, inspect, lock, and change the local MoneyOS wallet password",
 );
 
 authCommand
@@ -78,6 +166,13 @@ authCommand
       console.error(error instanceof Error ? error.message : String(error));
       process.exitCode = 1;
     }
+  });
+
+authCommand
+  .command("change-password")
+  .description("Change the local wallet password and lock the current session")
+  .action(async () => {
+    await runChangePasswordCommand();
   });
 
 authCommand

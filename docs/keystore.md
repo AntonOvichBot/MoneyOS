@@ -87,10 +87,16 @@ Current wallet backup behavior:
   password as the active wallet
 - `moneyos backup restore <path>` restores the encrypted wallet file
 - restore requires that same wallet password
+- `moneyos auth change-password` re-encrypts only the active wallet file
 - restore does not auto-unlock the wallet
 
 Important rule: backup files contain the encrypted wallet, not the raw private
 key.
+
+Important password-rotation rule: existing backup files and exported backups
+remain snapshots encrypted with the old wallet password. After a successful
+password change, run `moneyos backup export` if you want a fresh backup under
+the new password.
 
 ### Nonce behavior
 
@@ -172,6 +178,7 @@ The current encrypted-wallet flow also enforces a few practical guardrails:
 
 - wallet files are written with secure local file permissions
 - existing wallets are not overwritten unless the user passes `--force`
+- password rotation locks the current local session after success
 - backup restore verifies the password before overwriting the active wallet
 - read-only own-wallet balance uses authenticated wallet metadata, not the hot
   signing path

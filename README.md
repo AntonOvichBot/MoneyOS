@@ -22,6 +22,7 @@ moneyos init [--key 0x...] [--force] [--chain 42161] [--rpc https://...]
 moneyos auth unlock
 moneyos auth lock
 moneyos auth status
+moneyos auth change-password
 moneyos backup export [--out ./wallet-backup.json] [--force]
 moneyos backup restore <path> [--force]
 moneyos backup status
@@ -78,6 +79,7 @@ What is landed in code today:
 - `~/.moneyos/config.json` now stores only non-secret settings such as chain and RPC configuration
 - `MONEYOS_PRIVATE_KEY` remains an explicit override for ephemeral CI or agent runs
 - `moneyos auth unlock` opens a short-lived local session for write commands
+- `moneyos auth change-password` rotates the local wallet password and locks the current session
 - `moneyos backup export|restore|status` manages encrypted wallet backups
 - Normal wallet commands resolve their write path through one shared session-aware flow
 - Local EOA signers use viem's nonce manager, so back-to-back live transactions
@@ -118,6 +120,19 @@ with another tool first.
 If you have a legacy `~/.moneyos/config.json` with a plaintext `privateKey`
 field from a pre-encrypted-wallet version of the CLI, `moneyos init` with no
 flags will detect and import that key automatically.
+
+## Changing the wallet password
+
+Use:
+
+```bash
+moneyos auth change-password
+```
+
+This re-encrypts the active local wallet file with a new password and locks the
+current local session. Existing backup files and previously exported backups
+remain snapshots encrypted with the old password. If you want a backup under
+the new password, run `moneyos backup export` after the password change.
 
 ## Threat model
 

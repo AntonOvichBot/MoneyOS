@@ -59,11 +59,20 @@ export interface SecureWriteLabels {
   fileDescription: string;
 }
 
+type WalletIdentityMetadata = Pick<
+  EncryptedWalletFile,
+  "version" | "kind" | "address" | "createdAt" | "addressProof"
+>;
+
 export interface EncryptedWalletStore {
   readonly walletPath: string;
   exists(): boolean;
   metadata(): Promise<EncryptedWalletMetadata | undefined>;
   save(params: { privateKey: Hex; passphrase: string }): Promise<EncryptedWalletMetadata>;
+  rotatePassphrase(params: {
+    oldPassphrase: string;
+    newPassphrase: string;
+  }): Promise<EncryptedWalletMetadata>;
   decrypt(passphrase: string): Promise<Hex>;
   exportData(): Promise<EncryptedWalletFile>;
   restore(data: EncryptedWalletFile): Promise<EncryptedWalletMetadata>;
@@ -281,9 +290,10 @@ function writeFileAtomicSecure(
 async function encryptWallet(params: {
   privateKey: Hex;
   passphrase: string;
+  identity?: WalletIdentityMetadata;
 }): Promise<EncryptedWalletFile> {
   const account = privateKeyToAccount(params.privateKey);
-  const createdAt = new Date().toISOString();
+  const createdAt = params.identity?.createdAt ?? new Date().toISOString();
   const salt = randomBytes(16);
   const nonce = randomBytes(12);
   const key = deriveKey(params.passphrase, salt, DEFAULT_KDF);
@@ -295,19 +305,28 @@ async function encryptWallet(params: {
   );
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const authTag = cipher.getAuthTag();
-  const addressProof = await account.signMessage({
-    message: walletProofMessage({
-      version: 1,
-      kind: "encrypted-local-eoa",
-      address: account.address,
-      createdAt,
-    }),
-  });
+  const addressProof =
+    params.identity?.addressProof ??
+    (await account.signMessage({
+      message: walletProofMessage({
+        version: 1,
+        kind: "encrypted-local-eoa",
+        address: account.address,
+        createdAt,
+      }),
+    }));
+
+  if (
+    params.identity &&
+    account.address.toLowerCase() !== params.identity.address.toLowerCase()
+  ) {
+    throw new Error("wallet address metadata mismatch");
+  }
 
   return {
-    version: 1,
-    kind: "encrypted-local-eoa",
-    address: account.address,
+    version: params.identity?.version ?? 1,
+    kind: params.identity?.kind ?? "encrypted-local-eoa",
+    address: params.identity?.address ?? account.address,
     createdAt,
     addressProof,
     kdf: DEFAULT_KDF,
@@ -318,6 +337,16 @@ async function encryptWallet(params: {
       authTag: authTag.toString("base64"),
       ciphertext: ciphertext.toString("base64"),
     },
+  };
+}
+
+function walletIdentity(wallet: EncryptedWalletFile): WalletIdentityMetadata {
+  return {
+    version: wallet.version,
+    kind: wallet.kind,
+    address: wallet.address,
+    createdAt: wallet.createdAt,
+    addressProof: wallet.addressProof,
   };
 }
 
@@ -390,6 +419,30 @@ export class FileEncryptedWalletStore implements EncryptedWalletStore {
       WALLET_WRITE_LABELS,
     );
     return toMetadata(wallet);
+  }
+
+  async rotatePassphrase(params: {
+    oldPassphrase: string;
+    newPassphrase: string;
+  }): Promise<EncryptedWalletMetadata> {
+    if (!this.exists()) {
+      throw new Error("No wallet configured. Run `moneyos init`.");
+    }
+
+    assertSecureFileMode(this.walletPath, "Wallet file");
+    const wallet = parseWalletFile(
+      readFileSync(this.walletPath, "utf8"),
+      this.walletPath,
+    );
+    await verifyWalletAddressProof(wallet, this.walletPath);
+    const privateKey = await decryptWalletFile(wallet, params.oldPassphrase);
+    const rotated = await encryptWallet({
+      privateKey,
+      passphrase: params.newPassphrase,
+      identity: walletIdentity(wallet),
+    });
+    writeFileAtomicSecure(this.walletPath, JSON.stringify(rotated, null, 2));
+    return toMetadata(rotated);
   }
 
   async decrypt(passphrase: string): Promise<Hex> {
