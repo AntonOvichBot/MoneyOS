@@ -54,6 +54,11 @@ export interface EncryptedWalletMetadata {
   createdAt: string;
 }
 
+export interface SecureWriteLabels {
+  parentDescription: string;
+  fileDescription: string;
+}
+
 export interface EncryptedWalletStore {
   readonly walletPath: string;
   exists(): boolean;
@@ -74,6 +79,10 @@ const DEFAULT_KDF: EncryptedWalletKdfConfig = {
 
 const SECURE_FILE_MODE = 0o600;
 const SECURE_PARENT_MODE = 0o700;
+const WALLET_WRITE_LABELS: SecureWriteLabels = {
+  parentDescription: "Wallet directory",
+  fileDescription: "Wallet file",
+};
 
 function normalizePassphrase(passphrase: string): string {
   return passphrase.normalize("NFC");
@@ -92,7 +101,7 @@ function walletProofMessage(wallet: Pick<
   ].join("|");
 }
 
-function ensureParentDir(path: string): void {
+function ensureParentDir(path: string, label: string): void {
   const dir = dirname(path);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: SECURE_PARENT_MODE });
@@ -102,7 +111,7 @@ function ensureParentDir(path: string): void {
   const mode = statSync(dir).mode & 0o777;
   if ((mode & 0o077) !== 0) {
     throw new Error(
-      `Wallet directory ${dir} has insecure permissions (${mode.toString(8)}). Restrict it to 700 before continuing.`,
+      `${label} ${dir} has insecure permissions (${mode.toString(8)}). Restrict it to 700 before continuing.`,
     );
   }
 }
@@ -232,9 +241,13 @@ function walletAad(kdf: EncryptedWalletKdfConfig): Buffer {
   );
 }
 
-function writeFileAtomicSecure(path: string, contents: string): void {
-  ensureParentDir(path);
-  assertSecureFileMode(path, "Wallet file");
+function writeFileAtomicSecure(
+  path: string,
+  contents: string,
+  labels: SecureWriteLabels = WALLET_WRITE_LABELS,
+): void {
+  ensureParentDir(path, labels.parentDescription);
+  assertSecureFileMode(path, labels.fileDescription);
 
   const tmpPath = join(
     dirname(path),
@@ -371,7 +384,11 @@ export class FileEncryptedWalletStore implements EncryptedWalletStore {
     passphrase: string;
   }): Promise<EncryptedWalletMetadata> {
     const wallet = await encryptWallet(params);
-    writeFileAtomicSecure(this.walletPath, JSON.stringify(wallet, null, 2));
+    writeFileAtomicSecure(
+      this.walletPath,
+      JSON.stringify(wallet, null, 2),
+      WALLET_WRITE_LABELS,
+    );
     return toMetadata(wallet);
   }
 
@@ -406,9 +423,24 @@ export class FileEncryptedWalletStore implements EncryptedWalletStore {
   async restore(data: EncryptedWalletFile): Promise<EncryptedWalletMetadata> {
     const wallet = parseWalletFile(JSON.stringify(data), this.walletPath);
     await verifyWalletAddressProof(wallet, this.walletPath);
-    writeFileAtomicSecure(this.walletPath, JSON.stringify(wallet, null, 2));
+    writeFileAtomicSecure(
+      this.walletPath,
+      JSON.stringify(wallet, null, 2),
+      WALLET_WRITE_LABELS,
+    );
     return toMetadata(wallet);
   }
+}
+
+export async function writeEncryptedWalletFile(
+  path: string,
+  data: EncryptedWalletFile,
+  labels: SecureWriteLabels = WALLET_WRITE_LABELS,
+): Promise<EncryptedWalletMetadata> {
+  const wallet = parseWalletFile(JSON.stringify(data), path);
+  await verifyWalletAddressProof(wallet, path);
+  writeFileAtomicSecure(path, JSON.stringify(wallet, null, 2), labels);
+  return toMetadata(wallet);
 }
 
 export async function readEncryptedWalletFile(

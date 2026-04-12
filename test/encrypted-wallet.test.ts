@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hex } from "viem";
@@ -117,6 +124,31 @@ describe("FileEncryptedWalletStore", () => {
       chmodSync(walletPath, 0o644);
 
       await expect(store.metadata()).rejects.toThrow(/insecure permissions/i);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports insecure wallet directories as wallet-path errors", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-encrypted-wallet-"));
+    const insecureDir = join(tmpDir, "unsafe-wallet-dir");
+    const walletPath = join(insecureDir, "wallet.json");
+    const store = new FileEncryptedWalletStore(walletPath);
+
+    try {
+      mkdirSync(insecureDir, { recursive: true, mode: 0o777 });
+      chmodSync(insecureDir, 0o777);
+
+      await expect(
+        store.save({
+          privateKey: TEST_PK,
+          passphrase: "secret passphrase",
+        }),
+      ).rejects.toThrow(/wallet directory .* has insecure permissions/i);
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
@@ -297,6 +329,39 @@ describe("FileBackupProvider", () => {
       await expect(
         provider.exportWallet({ outPath, allowOverwrite: true }),
       ).resolves.toBe(outPath);
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports insecure export destinations separately from wallet-path errors", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-backup-"));
+    const walletPath = join(tmpDir, "wallet.json");
+    const backupDir = join(tmpDir, "backups");
+    const insecureDir = join(tmpDir, "unsafe-export-dir");
+    const outPath = join(insecureDir, "manual-backup.json");
+    const store = new FileEncryptedWalletStore(walletPath);
+
+    try {
+      await store.save({
+        privateKey: TEST_PK,
+        passphrase: "secret passphrase",
+      });
+      mkdirSync(insecureDir, { recursive: true, mode: 0o777 });
+      chmodSync(insecureDir, 0o777);
+
+      const provider = new FileBackupProvider({
+        walletPath,
+        backupDir,
+      });
+
+      await expect(provider.exportWallet({ outPath })).rejects.toThrow(
+        /backup export destination directory .* has insecure permissions/i,
+      );
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

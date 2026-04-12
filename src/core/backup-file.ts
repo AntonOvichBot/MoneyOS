@@ -10,6 +10,7 @@ import {
   type EncryptedWalletMetadata,
   readEncryptedWalletFile,
   verifyEncryptedWalletPassphrase,
+  writeEncryptedWalletFile,
 } from "./encrypted-wallet.js";
 
 export interface BackupProvider {
@@ -74,7 +75,10 @@ export class FileBackupProvider implements BackupProvider {
         "Backup file already exists. Re-run with `--force` if you really want to overwrite it.",
       );
     }
-    await new FileEncryptedWalletStore(targetPath).restore(wallet);
+    await writeEncryptedWalletFile(targetPath, wallet, {
+      parentDescription: "Backup export destination directory",
+      fileDescription: "Backup export file",
+    });
     return targetPath;
   }
 
