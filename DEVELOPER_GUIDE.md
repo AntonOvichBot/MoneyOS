@@ -3,52 +3,59 @@
 ## Project
 
 MoneyOS is an open source programmable money SDK and CLI by Aryze.
-`npm install moneyos` gives developers balance, send, and swap on Arbitrum.
+`npm install moneyos` gives developers runtime composition, wallet/session
+flows, balance, and send. Swap lives in `@moneyos/tool-swap`, not in the root
+package.
 
-See `VISION.md` for broader architecture direction and roadmap.
+Current docs:
+
+- current package boundaries: [`docs/architecture.md`](docs/architecture.md)
+- wallet and session architecture: [`docs/keystore.md`](docs/keystore.md)
+- broader product direction: [`VISION.md`](VISION.md)
 
 ## Structure
 
 ```text
+docs/
+├── architecture.md           — current package boundaries and rules
+└── keystore.md               — wallet/session/backup architecture
 packages/
-├── core/                      — @moneyos/core: runtime interfaces, types, registries
+├── core/                     — @moneyos/core: runtime interfaces, shared types, registries
 │   └── src/
-│       ├── types.ts           — result/value types (Balance, SendResult, SwapQuote, SwapProvider, Chain)
-│       ├── runtime.ts         — runtime interfaces + MoneyOSConfig (ExecutionClient, ReadClient, AssetRegistry, etc.)
-│       ├── tokens.ts          — token registry (USDC, USDT, RYZE, ETH, POL)
-│       ├── chains.ts          — chain registry (Arbitrum, Ethereum, Polygon)
-│       ├── keystore.ts        — shared KeyStore types
-│       └── index.ts           — public exports
-├── tool-swap/                 — @moneyos/tool-swap: swap tool with pluggable providers
+│       ├── runtime.ts        — runtime interfaces + MoneyOSConfig
+│       ├── types.ts          — shared result/value types
+│       ├── tokens.ts         — token registry
+│       ├── chains.ts         — chain registry
+│       ├── keystore.ts       — shared KeyStore types
+│       └── index.ts          — public exports
+├── tool-swap/                — @moneyos/tool-swap: swap tool + Odos provider
 │   └── src/
-│       ├── tool.ts            — swapAction, createSwapTool
+│       ├── tool.ts           — executeSwap, swapAction, createSwapTool
+│       ├── types.ts          — SwapProvider and swap result types
 │       ├── providers/
-│       │   └── odos.ts        — Odos DEX provider
+│       │   └── odos.ts       — Odos provider adapter
 │       └── index.ts
 src/
 ├── core/
-│   ├── types.ts         — re-exports from @moneyos/core
-│   ├── runtime.ts       — re-exports from @moneyos/core
-│   ├── tokens.ts        — re-exports from @moneyos/core
-│   ├── chains.ts        — re-exports from @moneyos/core + getViemChain
-│   ├── client.ts        — MoneyOS class (balance, send, swap)
-│   ├── eoa.ts           — EOAExecutor, ViemReadClient implementations
-│   ├── encrypted-wallet.ts — encrypted local wallet file + crypto helpers
-│   ├── backup-file.ts   — encrypted wallet backup provider
-│   ├── signer.ts        — nonce-managed local signer helper
-│   ├── access-local.ts  — LocalAccessAdapter
-│   └── factory.ts       — createMoneyOS helper
-├── providers/
-│   └── odos.ts          — Odos DEX swap provider (root-level, used by CLI)
-├── tools/
-│   └── swap.ts          — executeSwap shared helper
+│   ├── client.ts             — MoneyOS class (balance, send, runtime)
+│   ├── factory.ts            — createMoneyOS helper
+│   ├── eoa.ts                — ViemReadClient + EOAExecutor
+│   ├── access-local.ts       — LocalAccessAdapter
+│   ├── encrypted-wallet.ts   — encrypted local wallet file
+│   ├── keystore-file.ts      — file-backed keystore adapter
+│   ├── backup-file.ts        — encrypted wallet backup flow
+│   ├── signer.ts             — nonce-managed local signer helper
+│   ├── runtime.ts            — re-exports from @moneyos/core
+│   ├── types.ts              — re-exports from @moneyos/core
+│   ├── tokens.ts             — re-exports from @moneyos/core
+│   └── chains.ts             — re-exports from @moneyos/core
 ├── cli/
-│   ├── index.ts         — CLI entry (commander)
-│   ├── config.ts        — ~/.moneyos/config.json + wallet/backup path helpers
-│   ├── wallet.ts        — shared CLI wallet/address resolution
-│   ├── wallet-status.ts — wallet status formatting and legacy detection
-│   ├── prompt.ts        — hidden terminal password prompt
-│   ├── session.ts       — local unlock session daemon/client
+│   ├── index.ts              — CLI entry
+│   ├── config.ts             — local config and path helpers
+│   ├── wallet.ts             — shared CLI wallet/address resolution
+│   ├── wallet-status.ts      — wallet status formatting and legacy detection
+│   ├── prompt.ts             — hidden terminal password prompt
+│   ├── session.ts            — local unlock session daemon/client
 │   ├── version.ts
 │   └── commands/
 │       ├── init.ts
@@ -56,9 +63,8 @@ src/
 │       ├── backup.ts
 │       ├── balance.ts
 │       ├── send.ts
-│       ├── swap.ts
 │       └── keystore.ts
-└── index.ts             — SDK public exports (re-exports @moneyos/core + implementations)
+└── index.ts                  — root package public exports
 ```
 
 ## Packages
@@ -67,7 +73,7 @@ src/
 |---------|-------------|-------------|
 | `@moneyos/core` | Runtime interfaces, shared types, token/chain registries | viem (peer) |
 | `@moneyos/tool-swap` | Swap tool with pluggable providers | @moneyos/core, viem (peer) |
-| `moneyos` | SDK + CLI — composes core + implementations | @moneyos/core, viem, commander |
+| `moneyos` | SDK + CLI for runtime composition, wallet flows, balance, and send | @moneyos/core, viem, commander |
 
 Dependency direction:
 
@@ -90,69 +96,21 @@ npm run test
 Build order matters: `@moneyos/core` must be built before the root package and
 the downstream workspace packages.
 
-## Wallet architecture
-
-What is landed today:
-
-- the root CLI wallet lives in `~/.moneyos/wallet.json` as an encrypted local wallet
-- `~/.moneyos/config.json` stores only non-secret config such as chain and RPC settings
-- `~/.moneyos/backups/` stores encrypted wallet backup files
-- `MONEYOS_PRIVATE_KEY` can still override local wallet state for explicit ephemeral runs
-- `src/cli/wallet.ts` is the shared resolver for wallet address and write access
-- `moneyos auth unlock` starts a short-lived local session daemon for write commands
-- read-only own-wallet balance resolves address metadata without requiring unlock
-- local EOA execution still uses viem's nonce manager
-
-What was intentionally removed:
-
-- the old 1Password-as-wallet-backend model
-- CLI flows that treated password managers as the place where the wallet secret
-  actually lived
-
-Target direction:
-
-- local encrypted wallet as source of truth
-- local hidden password prompt for human unlock
-- short-lived local session for agents and terminal workflows
-- password managers as optional password storage choices, not wallet backends
-
-Upgrade note:
-
-- legacy `config.json` files that still contain `privateKey` are treated as
-  import-only state now, not active runtime state
-- local users should run `moneyos init` to move that wallet into the encrypted
-  wallet file and create the first backup artifact
-
-For deeper notes, see [`docs/keystore.md`](docs/keystore.md).
-
-## Key decisions
-
-- workspace monorepo with `packages/*`
-- `moneyos` re-exports `@moneyos/core`
-- viem for on-chain interaction
-- Commander for CLI
-- Arbitrum as default chain
-- Odos as default swap provider
-- current CLI wallet resolution: env private key -> local unlock session -> fail closed
-- shared wallet resolution lives in `src/cli/wallet.ts`
-- SDK surface stays storage-agnostic via `signer` / `execute`
-- current product direction is encrypted local wallet + unlock/session + encrypted backups
-- EOA is the canonical identity
-- runtime shape stays intentionally small: read, execute, assets, config
-- `createMoneyOS` accepts injected runtime parts
-
 ## Publishing
 
 - package name: `moneyos`
 - workspace packages: `@moneyos/core`, `@moneyos/tool-swap`
-- before publish: verify registry ownership, replace `workspace:*` runtime
-  dependencies with publish-safe version ranges, and confirm packed tarballs
-  include built artifacts
-- test before publish: `npm pack --dry-run`, install tarball, verify CLI works
-- bump version in `package.json`
+- `@moneyos/tool-swap` is not published yet
+- before publish: verify registry ownership, confirm packed tarballs include
+  built artifacts, and validate the install surface
+- test before publish: `npm pack --dry-run`, install the tarball in a clean
+  temp directory, verify CLI behavior and package shape
+- keep package-boundary changes in sync with [`docs/architecture.md`](docs/architecture.md)
 
 ## Rules
 
+- no root-level tool-specific logic
+- no provider-specific logic in `@moneyos/core`
 - no AI attribution in code, commits, or docs
 - no secrets, API keys, or Aryze-internal references
 - open source ready from every commit

@@ -14,6 +14,8 @@ but the repo is structured so each major surface can evolve independently.
 - `@moneyos/core`: runtime interfaces, shared types, chain/token registries
 - `@moneyos/tool-swap`: canonical swap tool package and Odos provider in this repo workspace
 
+Current package-boundary rules live in [`docs/architecture.md`](docs/architecture.md).
+
 ## CLI
 
 Available commands:

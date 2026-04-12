@@ -1,74 +1,54 @@
 # MoneyOS Vision
 
+This file is directional. For the current shipped package boundaries and rules,
+see [`docs/architecture.md`](docs/architecture.md).
+
 ## What it is
 
-The operating system for money. A programmable money engine that developers and AI agents install with one command. Not a wallet, not an app — infrastructure.
+The operating system for money. A programmable money engine that developers and
+AI agents install with one command. Not a wallet, not an app — infrastructure.
 
-The FFmpeg analogy: nobody sees FFmpeg, but everything uses it. MoneyOS is the same for money.
+The FFmpeg analogy: nobody sees FFmpeg, but everything uses it. MoneyOS is the
+same for money.
 
 ## Architecture
 
-### Core
+### Bare-metal core
 
-The core is tiny and stays tiny. It's what `npm install moneyos` gives you:
+The bare-metal core stays tiny.
 
-- Account creation
-- Balance reads
-- Token send/receive
-- Configuration (`~/.moneyos/`)
+Today that means:
 
-Two real dependencies: Viem (on-chain) and Commander (CLI). Everything else is a tool.
+- `@moneyos/core` for runtime contracts, shared types, and registries
+- `moneyos` for runtime composition, local wallet/session flows, balance, send,
+  and the root CLI
+
+Everything product-specific above that should live in tool packages.
 
 ### Tools
 
-Tools are what you do. Each tool is a separate installable package.
+Tools are separate packages above the core that implement one workflow against
+the runtime seam.
 
-```
-moneyos add swap      # Token swaps
-moneyos add bank      # IBAN, fiat transfers
-moneyos add card      # Virtual/physical cards
-moneyos add bridge    # Cross-chain bridging
-moneyos add onramp    # Fiat to crypto
-moneyos add offramp   # Crypto to fiat
-```
+Current example: `@moneyos/tool-swap`.
 
-Some tools are permissionless (swap, bridge). Some require KYC (bank, card, offramp). The KYC gate is enforced at the tool level.
-
-Developers discover a tool and MoneyOS comes with it as the dependency. Every tool is a door into the ecosystem.
+Longer term, the repo may grow more tool packages such as bank, card, bridge,
+onramp, or offramp. Those are direction notes, not shipped root-package
+features.
 
 ### Providers
 
-Providers are who does it. Each tool can have multiple providers. The developer picks the tool — the provider is either the default or their choice.
+Providers are tool-level adapters for external protocols or services.
 
-```
-swap/
-├── odos (default)
-├── uniswap
-├── 1inch
-└── lifi
-
-bank/
-├── aryze (default)
-├── revolut
-└── wise
-
-card/
-├── aryze (default)
-└── ...
-```
-
-The tool interface stays the same regardless of provider. `moneyos swap` just works.
+Today, Odos lives under `@moneyos/tool-swap`. The root package should not
+special-case provider logic. If more providers arrive, they should belong to
+the swap tool, not to `moneyos` or `@moneyos/core`.
 
 ### Surfaces
 
-The same primitives work across every surface:
-
-- **CLI**: `moneyos swap 100 USDC RYZE`
-- **SDK**: `moneyos.swap("USDC", "RYZE", "100")`
-- **Telegram**: `/swap 100 USDC RYZE`
-- **Agent**: tool call with same parameters
-
-One mental model, multiple surfaces.
+Longer term, the same mental model should span CLI, SDK, and agent surfaces.
+That is a direction, not a claim that every tool is built into every surface
+today.
 
 ## RYZE Token
 
@@ -78,7 +58,8 @@ MoneyOS is open source by Aryze. RYZE is woven into the system naturally:
 - Default trading pair in swaps
 - RPC infrastructure funding
 
-All optional, all replaceable by someone who forks. But the default path runs through RYZE.
+All optional, all replaceable by someone who forks. But the default path runs
+through RYZE.
 
 ## KYC & Enterprise
 
@@ -87,43 +68,54 @@ The tool architecture doubles as a compliance layer:
 - Permissionless tools: swap, bridge, send (crypto)
 - KYC-gated tools: bank, card, offramp
 
-This makes MoneyOS sellable to regulated institutions. Banks plug in as providers inside KYC-gated tools. They don't build agent APIs — MoneyOS already did.
+This makes MoneyOS sellable to regulated institutions. Banks plug in as
+providers inside KYC-gated tools. They do not need to build the whole agent
+surface themselves.
 
-Aryze is the bridge: regulatory relationships, Mastercard partnership, UK pay-by-bank.
+Aryze is the bridge: regulatory relationships, Mastercard partnership, UK
+pay-by-bank.
 
 ## Distribution
 
-Target audience: AI developers and crypto-native builders. The people on GitHub, HuggingFace, following OpenAI/Anthropic ecosystems.
+Target audience: AI developers and crypto-native builders. The people on
+GitHub, HuggingFace, following OpenAI and Anthropic ecosystems.
 
 Distribution strategy:
-1. Developers find a tool they need (bank, swap, card)
-2. The tool depends on MoneyOS core
-3. MoneyOS gets installed as a dependency
-4. Developer is now in the ecosystem
+
+1. Developers find a tool they need.
+2. The tool depends on MoneyOS core.
+3. MoneyOS gets installed as a dependency.
+4. The developer is now in the ecosystem.
 
 The npm package is the wedge. Not a landing page, not a pitch deck.
 
 ## Technical Stack
 
-- **Chain**: Arbitrum first (fast, cheap, RYZE is there)
-- **On-chain reads**: Viem
-- **Wallet/signing**: Viem
-- **Swaps**: Odos (default provider, others pluggable)
+- **Chain**: Arbitrum first
+- **On-chain reads**: viem
+- **Wallet/signing**: viem
+- **Swaps**: `@moneyos/tool-swap` with Odos today
 - **Language**: TypeScript
 - **Package**: `npm install moneyos`
 
-## What exists today (v0.2)
+## What exists today
 
-- `moneyos init` — generate or import account
-- `moneyos balance` — read on-chain balance (ETH, USDC, USDT, RYZE)
-- `moneyos send` — send tokens
-- `moneyos swap` — swap via Odos DEX aggregator
-- SDK: `import { MoneyOS } from "moneyos"`
-- Chains: Arbitrum (default), Ethereum, Polygon
+- `moneyos init` for account generation or import
+- `moneyos auth` for local unlock, lock, status, and password rotation
+- `moneyos backup` for encrypted wallet backup export, restore, and status
+- `moneyos balance` for on-chain balance reads
+- `moneyos send` for token sends
+- SDK surface: `createMoneyOS`, `MoneyOS.balance`, `MoneyOS.send`,
+  `moneyos.runtime`
+- `@moneyos/tool-swap` as an in-repo workspace package with `executeSwap` and
+  `OdosProvider`
+- Chains: Arbitrum, Ethereum, Polygon
 
 ## What's next
 
-- Tool/provider plugin architecture
-- Error handling (human-readable messages)
-- More chains, more tokens
-- Telegram bot surface
+- Error handling with clearer operator-facing messages
+- More chains and tokens
+- More live validation of session-backed send and external-tool execution
+- A real second swap provider before adding provider-selection UX
+- Registry, installer, routing, or plugin layers only when repeated pressure
+  makes them necessary
