@@ -184,22 +184,29 @@ export function createCliToolManager(params: {
     })();
 
   async function invoke(entry: ToolRegistryEntry, args: string[]): Promise<void> {
+    let command: Command;
     try {
+      // Load/validation failures mean the installed tool itself is broken.
       const loaded = await loadInstalledTool(paths, entry.packageName);
       if (!sameMetadata(entry, loaded)) throw new Error("installed metadata does not match registry");
-      const command = loaded.createCommand(cliContext);
+      command = loaded.createCommand(cliContext);
       if (!(command instanceof Command) || command.name() !== entry.commandPath[entry.commandPath.length - 1]) {
         throw new Error("createCommand() did not return the expected command");
       }
       command.exitOverride();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Installed tool ${entry.commandPath.join(" ")} is broken: ${message}. Run \`moneyos add ${entry.packageName}\` to repair it or \`moneyos remove ${entry.packageName}\` to uninstall it.`);
+    }
+
+    try {
       await command.parseAsync([process.execPath, entry.commandPath[entry.commandPath.length - 1], ...args]);
     } catch (error) {
       if (error instanceof CommanderError) {
         if (error.code !== "commander.helpDisplayed") process.exitCode = error.exitCode || 1;
         return;
       }
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Installed tool ${entry.commandPath.join(" ")} is broken: ${message}. Run \`moneyos add ${entry.packageName}\` to repair it or \`moneyos remove ${entry.packageName}\` to uninstall it.`);
+      throw error;
     }
   }
 

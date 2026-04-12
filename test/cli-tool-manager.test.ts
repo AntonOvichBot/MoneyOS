@@ -535,6 +535,90 @@ describe("cli tool manager", () => {
     expect(onInvoke).toHaveBeenCalledWith("1", "USDC", "ETH");
   });
 
+  it("runtime errors from installed tool commands pass through unwrapped", async () => {
+    const harness = registerHarness({
+      "@moneyos/swap": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+          onInvoke: async () => {
+            throw new Error("insufficient funds");
+          },
+        }),
+      },
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await manager.addTool("swap");
+
+    const program = createProgram({ toolManager: manager });
+
+    const error = await program
+      .parseAsync(["node", "moneyos", "swap", "1", "USDC", "ETH"])
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe("insufficient funds");
+    expect((error as Error).message).not.toMatch(/Installed tool swap is broken/i);
+  });
+
+  it("load errors while invoking installed tool commands are wrapped with repair guidance", async () => {
+    const harness = registerHarness({
+      "@moneyos/swap": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+        }),
+      },
+    });
+    const moduleLoader = async () => {
+      throw new Error("missing compiled entrypoint");
+    };
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    writeFileSync(
+      harness.paths.registryPath,
+      `${JSON.stringify([
+        {
+          packageName: "@moneyos/swap",
+          packageVersion: "0.1.0",
+          toolVersion: 1,
+          name: "swap",
+          commandPath: ["swap"],
+          description: "Swap tokens",
+        },
+      ], null, 2)}\n`,
+    );
+
+    const program = createProgram({ toolManager: manager });
+
+    await expect(
+      program.parseAsync(["node", "moneyos", "swap", "1", "USDC", "ETH"]),
+    ).rejects.toThrow(
+      /Installed tool swap is broken: missing compiled entrypoint\. Run `moneyos add @moneyos\/swap` to repair it or `moneyos remove @moneyos\/swap` to uninstall it\./i,
+    );
+  });
+
   it("mounts nested command paths under shared parent groups", async () => {
     const onInvoke = vi.fn();
     const harness = registerHarness({
