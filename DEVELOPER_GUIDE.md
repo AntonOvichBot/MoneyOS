@@ -101,8 +101,8 @@ the downstream workspace packages.
 - package name: `moneyos`
 - workspace packages: `@moneyos/core`, `@moneyos/swap`
 - published workspace versions: `@moneyos/core@0.1.0`, `@moneyos/swap@0.1.0`
-- `moneyos@0.4.0` keeps swap out of the root package; install `@moneyos/swap`
-  separately when you need swap
+- current `moneyos` releases keep swap out of the root package; install
+  `@moneyos/swap` separately when you need swap
 - before publish: verify registry ownership, confirm packed tarballs include
   built artifacts, and validate the install surface
 - test before publish: `npm pack --dry-run`, install the tarball in a clean

@@ -2,6 +2,15 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## 0.4.1 - 2026-04-12
+
+### Fixed
+
+- fixed the published `moneyos` CLI entrypoint so `npm install moneyos` now
+  produces a working `moneyos` binary from `node_modules/.bin`; `0.4.0`
+  incorrectly exited without printing help or version because the entrypoint
+  guard did not resolve npm's symlinked bin path
+
 ## 0.4.0 - 2026-04-12
 
 ### Added

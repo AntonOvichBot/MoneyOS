@@ -108,8 +108,8 @@ Published packages:
 - `@moneyos/core`
 - `@moneyos/swap`
 
-`moneyos@0.4.0` no longer bundles swap into the root SDK or CLI. If you want
-swap, install `@moneyos/swap` alongside `moneyos`.
+Current `moneyos` releases no longer bundle swap into the root SDK or CLI. If
+you want swap, install `@moneyos/swap` alongside `moneyos`.
 
 ## Current wallet model
 
