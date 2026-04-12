@@ -1,8 +1,7 @@
 import { defineConfig } from "tsup";
 
-// `@moneyos/core` is an internal workspace package, not published to npm.
-// We bundle it into the public `moneyos` package so installs are self-contained
-// and consumers never have to know `@moneyos/core` exists.
+// `@moneyos/core` is now published, but the root `moneyos` package still
+// bundles it so the default SDK and CLI install stay self-contained.
 const noExternal = [/^@moneyos\/core(\/.*)?$/];
 
 export default defineConfig([

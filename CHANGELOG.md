@@ -2,6 +2,22 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## 0.4.0 - 2026-04-12
+
+### Added
+
+- published `@moneyos/core@0.1.0` as the stable runtime contract package for
+  MoneyOS tools and custom runtimes
+- published `@moneyos/swap@0.1.0` as the canonical swap package with
+  `executeSwap`, `swapAction`, `createSwapTool`, and `OdosProvider`
+
+### Changed
+
+- `moneyos` now treats swap as an external package instead of a built-in root
+  workflow; install `@moneyos/swap` separately when you want swap support
+- the root README and developer docs now point at the published workspace
+  packages and the current package boundary split
+
 ## 0.3.4 - 2026-04-12
 
 ### Added

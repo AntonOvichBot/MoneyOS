@@ -12,7 +12,7 @@ but the repo is structured so each major surface can evolve independently.
 
 - `moneyos`: the root SDK + CLI package for runtime, wallet, balance, and send
 - `@moneyos/core`: runtime interfaces, shared types, chain/token registries
-- `@moneyos/swap`: canonical swap package and Odos provider in this repo workspace
+- `@moneyos/swap`: canonical swap package and Odos provider, published on npm
 
 Current package-boundary rules live in [`docs/architecture.md`](docs/architecture.md).
 
@@ -67,9 +67,15 @@ The runtime seam is intentionally small. `createMoneyOS` can also take injected
 plug in.
 
 Swap is no longer built into the root SDK or CLI. The canonical implementation
-lives in the `@moneyos/swap` workspace package in this repo. That package
-is not published on npm yet, so use it from this monorepo, a git dependency,
-or another local build. It executes against `moneyos.runtime`:
+lives in `@moneyos/swap`, which executes against `moneyos.runtime`.
+
+Install it alongside the root package:
+
+```bash
+npm install moneyos @moneyos/swap
+```
+
+Then call it against the root runtime seam:
 
 ```ts
 import { createMoneyOS } from "moneyos";
@@ -94,14 +100,16 @@ const result = await executeSwap(
 console.log(result.hash);
 ```
 
-## Published npm package
+## Published npm packages
 
-`moneyos` is published on npm. `npm install moneyos` and `npx moneyos` give
-you the latest tagged release, not unreleased commits on `main`.
+Published packages:
 
-`@moneyos/swap` is not published on npm yet. If you want the swap package
-today, clone the repo and build from source, or consume the workspace package
-through a git/local dependency.
+- `moneyos`
+- `@moneyos/core`
+- `@moneyos/swap`
+
+`moneyos@0.4.0` no longer bundles swap into the root SDK or CLI. If you want
+swap, install `@moneyos/swap` alongside `moneyos`.
 
 ## Current wallet model
 
