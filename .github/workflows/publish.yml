@@ -29,9 +29,6 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - name: Upgrade npm for Trusted Publishing
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: npm ci
 
@@ -104,4 +101,4 @@ jobs:
         working-directory: ${{ steps.target.outputs.package_dir }}
         env:
           DIST_TAG: ${{ steps.target.outputs.dist_tag }}
-        run: npm publish --provenance --access public --tag "$DIST_TAG"
+        run: npx -y npm@latest publish --provenance --access public --tag "$DIST_TAG"
