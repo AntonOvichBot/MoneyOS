@@ -5,6 +5,7 @@ on:
     paths:
       - ".github/workflows/release-verify.yml"
       - ".github/workflows/publish.yml"
+      - "LICENSE"
       - "package.json"
       - "package-lock.json"
       - "scripts/release-verify.mjs"
@@ -20,6 +21,7 @@ on:
     paths:
       - ".github/workflows/release-verify.yml"
       - ".github/workflows/publish.yml"
+      - "LICENSE"
       - "package.json"
       - "package-lock.json"
       - "scripts/release-verify.mjs"

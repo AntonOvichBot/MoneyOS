@@ -32,9 +32,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify packed release artifacts
-        run: npm run release:verify
-
       - name: Select publish target from tag
         id: target
         env:
@@ -44,18 +41,22 @@ jobs:
             v*)
               echo "package_dir=." >> "$GITHUB_OUTPUT"
               echo "package_name=moneyos" >> "$GITHUB_OUTPUT"
+              echo "expected_version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
               ;;
             moneyos-v*)
               echo "package_dir=." >> "$GITHUB_OUTPUT"
               echo "package_name=moneyos" >> "$GITHUB_OUTPUT"
+              echo "expected_version=${REF_NAME#moneyos-v}" >> "$GITHUB_OUTPUT"
               ;;
             moneyos-core-v*)
               echo "package_dir=packages/core" >> "$GITHUB_OUTPUT"
               echo "package_name=@moneyos/core" >> "$GITHUB_OUTPUT"
+              echo "expected_version=${REF_NAME#moneyos-core-v}" >> "$GITHUB_OUTPUT"
               ;;
             moneyos-swap-v*)
               echo "package_dir=packages/swap" >> "$GITHUB_OUTPUT"
               echo "package_name=@moneyos/swap" >> "$GITHUB_OUTPUT"
+              echo "expected_version=${REF_NAME#moneyos-swap-v}" >> "$GITHUB_OUTPUT"
               ;;
             *)
               echo "Unsupported tag: $REF_NAME" >&2
@@ -67,6 +68,33 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm whoami
+
+      - name: Verify tag matches package version
+        env:
+          PACKAGE_DIR: ${{ steps.target.outputs.package_dir }}
+          EXPECTED_VERSION: ${{ steps.target.outputs.expected_version }}
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./${PACKAGE_DIR#./}/package.json').version")
+          if [ "$PACKAGE_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Tag version $EXPECTED_VERSION does not match $PACKAGE_DIR/package.json version $PACKAGE_VERSION" >&2
+            exit 1
+          fi
+
+      - name: Prepare workspace outputs
+        run: npm run build:core
+
+      - name: Run CI checks
+        run: |
+          npm run lint
+          npm run lint:core
+          npm run lint:swap
+          npm run typecheck
+          npm run typecheck:core
+          npm run typecheck:swap
+          npm test
+
+      - name: Verify packed release artifacts
+        run: npm run release:verify
 
       - name: Publish package
         working-directory: ${{ steps.target.outputs.package_dir }}
