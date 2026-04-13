@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hex } from "viem";
 import {
   getLegacyPlaintextWalletStorageMessage,
+  getMoneyOSDir,
   getRemovedOnePasswordCachedAddress,
   getRemovedOnePasswordStorageMessage,
+  getSessionSocketPath,
   hasLegacyPlaintextWalletConfig,
   hasRemovedOnePasswordConfig,
   loadConfig,
@@ -108,6 +111,30 @@ describe("CLIConfig file schema", () => {
   it("missing file returns an empty config", () => {
     const missingPath = join(tmpDir, "does-not-exist.json");
     expect(loadFileConfig(missingPath)).toEqual({});
+  });
+});
+
+describe("session path helpers", () => {
+  const originalPlatform = process.platform;
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform });
+  });
+
+  it("returns the default unix socket path outside Windows", () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
+    expect(getSessionSocketPath()).toBe(join(getMoneyOSDir(), "session.sock"));
+  });
+
+  it("returns the hashed default Windows named-pipe path", () => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    const suffix = createHash("sha256")
+      .update(getMoneyOSDir())
+      .digest("hex")
+      .slice(0, 16);
+    expect(getSessionSocketPath()).toBe(
+      `\\\\.\\pipe\\moneyos-session-${suffix}`,
+    );
   });
 });
 
