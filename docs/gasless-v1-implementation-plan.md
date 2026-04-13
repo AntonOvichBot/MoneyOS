@@ -113,6 +113,38 @@ Minimum routes:
 - `GET /v1/tx/:id`
 - `GET /v1/capabilities`
 
+V1 relay policy should live in:
+- `services/relay/src/policy/moneyos-native-policy.ts`
+- chain/provider config under `services/relay/config/`
+
+V1 allowed sponsored call shapes on Arbitrum:
+1. native send
+   - `calls.length === 1`
+   - empty calldata
+   - `value > 0`
+2. ERC-20 send
+   - `calls.length === 1`
+   - allowlisted token contract
+   - selector `transfer(address,uint256)` (`0xa9059cbb`)
+   - `value === 0`
+3. native-in swap
+   - `calls.length === 1`
+   - allowlisted Odos router + allowlisted swap selector
+   - `value > 0`
+4. ERC-20-in swap, atomic approve + swap
+   - `calls.length === 2`
+   - first call = allowlisted token `approve(address,uint256)` (`0x095ea7b3`)
+   - second call = allowlisted Odos router + allowlisted swap selector
+   - `approve.spender === swap.target`
+   - exact-amount approve only
+
+Keep these disallowed in v1:
+- `transferFrom(address,address,uint256)` (`0x23b872dd`)
+- extra arbitrary calls beyond the approved send/swap patterns
+- non-Arbitrum sponsorship
+
+Provider-specific router addresses and swap selectors must stay config-driven, not hardcoded.
+
 ### Phase 5: runtime + CLI integration
 
 Likely touched files:
@@ -181,30 +213,22 @@ Settled:
 
 ## Remaining blockers before build
 
-### 1. Exact MoneyOS-native allowlist
-Needs a concrete v1 definition for relay policy.
-
-Current likely categories:
-- native send
-- ERC-20 transfer / transferFrom-equivalent send paths used by MoneyOS
-- ERC-20 approve for supported swap token inputs
-- approved swap router/calldata path for the supported provider on Arbitrum
-
-This needs to become explicit addresses/selectors/config, not hand-wavy prose.
-
-### 2. Treasury caps
-Need launch defaults for:
-- per-wallet spend cap
-- global daily cap
-- max gas per sponsored tx
-- behavior on relay outage / simulation failure
-
-### 3. User-side automation-key UX
+### 1. User-side automation-key UX
 Need the minimal v1 story for:
 - how a user creates an authorized key
 - how it is scoped
 - how it is revoked
 - whether v1 ships any CLI UX for this or keeps it owner-only first
+
+### 2. Final policy/config freeze
+The relay policy shape is now concrete, but before coding starts we still need the exact v1 config values checked into the right place:
+- Arbitrum token allowlist source of truth
+- Odos router address list
+- Odos swap selector allowlist
+- policy version naming and capability reporting
+
+### 3. Treasury defaults acceptance
+The launch defaults are now concrete, but they still need to be treated as explicit launch settings rather than loose guidance.
 
 ## Recommended defaults if we need to keep moving
 
@@ -216,6 +240,27 @@ If no better product decision appears quickly, use these:
 - static allowlist driven by config per chain/provider
 - conservative treasury caps with a global kill switch
 
+Recommended launch treasury defaults:
+- per-wallet cap: `0.001 ETH` per rolling 24h
+- max 3 sponsored tx per wallet per rolling 24h
+- per-tx hard cap: `0.0008 ETH`
+- soft target guidance:
+  - send: `0.00015 ETH`
+  - steady-state swap: `0.00035 ETH`
+  - first deploy + execute: up to `0.0008 ETH`
+- daily global cap: `0.03 ETH`
+- alert at 50% of daily cap, pause/manual-confirm at 80%
+- sponsor TTL: 5 minutes max
+- degraded mode fallback:
+  - send-only
+  - `0.00015 ETH` per tx hard cap
+  - `0.005 ETH` global/day
+- fail closed on:
+  - simulation failure
+  - non-allowlisted selector/target
+  - stale route/quote
+  - unhealthy relay or RPC state
+
 ## What counts as implementation-ready
 
 Before safe coding starts, we should have:
@@ -223,7 +268,7 @@ Before safe coding starts, we should have:
 - `IntentV1` shape frozen
 - contract toolchain chosen
 - contract surface frozen enough for tests
-- MoneyOS-native allowlist defined concretely for Arbitrum v1
+- Arbitrum v1 relay policy expressed concretely in config + code
 - treasury caps chosen
 - package boundaries accepted
 
