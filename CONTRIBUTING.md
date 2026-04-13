@@ -52,6 +52,14 @@ Please keep pull requests readable and intentional.
 - Do not include secrets, private endpoints, or internal-only details
 - Keep public history professional and readable
 
+## Releasing
+
+Root releases are tagged `moneyos-v<version>` (for example,
+`moneyos-v0.5.1`). Workspace package releases are tagged
+`moneyos-<package>-v<version>` (for example, `moneyos-swap-v0.2.0`).
+The legacy `v<version>` form is still accepted by CI for existing
+historical root tags, but new releases should use `moneyos-v<version>`.
+
 ## Security
 
 If you believe you have found a security issue, do not open a public issue.
