@@ -12,7 +12,7 @@ Release history lives in [`CHANGELOG.md`](https://github.com/1231chegites/moneyo
 Root CLI path:
 
 ```bash
-npm install moneyos
+npm install -g moneyos
 moneyos init
 moneyos auth unlock
 moneyos add swap

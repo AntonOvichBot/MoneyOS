@@ -91,6 +91,11 @@ npm run build:core
 npm run build
 npm run build:swap
 npm run typecheck
+npm run typecheck:core
+npm run typecheck:swap
+npm run lint
+npm run lint:core
+npm run lint:swap
 npm run test
 ```
 

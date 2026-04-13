@@ -18,6 +18,12 @@ Current package-boundary rules live in [`docs/architecture.md`](docs/architectur
 
 ## CLI
 
+Install the CLI globally:
+
+```bash
+npm install -g moneyos
+```
+
 Available commands:
 
 ```bash
@@ -28,14 +34,20 @@ moneyos auth status
 moneyos auth change-password
 moneyos add <tool>
 moneyos remove <tool>
+moneyos update [tool] [--check]
 moneyos tools
-moneyos swap <amount> <tokenIn> <tokenOut> [--chain <id>] [--provider odos]
 moneyos backup export [--out ./wallet-backup.json] [--force]
 moneyos backup restore <path> [--force]
 moneyos backup status
 moneyos keystore status
-moneyos balance <token> [--address 0x...]
+moneyos balance [token] [--address 0x...] [--chain <id>] [--all]
 moneyos send <amount> <token> <to>
+```
+
+After `moneyos add swap`, the installed swap tool adds:
+
+```bash
+moneyos swap <amount> <tokenIn> <tokenOut> [--chain <id>] [--provider odos]
 ```
 
 For the full command surface and flag details, run `moneyos --help`.
@@ -43,6 +55,7 @@ For the full command surface and flag details, run `moneyos --help`.
 Example:
 
 ```bash
+npm install -g moneyos
 moneyos init
 moneyos auth unlock
 moneyos add swap
@@ -106,7 +119,7 @@ For CLI usage, install the root package and then add tools into the user-level
 MoneyOS tool home:
 
 ```bash
-npm install moneyos
+npm install -g moneyos
 moneyos init
 moneyos auth unlock
 moneyos add swap
@@ -273,6 +286,7 @@ What we have verified locally on the current code:
 - unit tests pass
 - lint passes
 - typechecks pass
+- workspace lint/typecheck passes after `build:core`
 - workspace builds pass
 - the built CLI runs
 - encrypted wallet creation, unlock/session, backup export, and backup restore protections are covered by tests
@@ -296,8 +310,12 @@ npm install
 npm run build:core
 npm run build:swap
 npm run typecheck
+npm run typecheck:core
+npm run typecheck:swap
 npm test
 npm run lint
+npm run lint:core
+npm run lint:swap
 npm run build
 ```
 

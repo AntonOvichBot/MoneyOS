@@ -20,11 +20,18 @@ npm run lint
 npm run typecheck
 ```
 
+`npm test` builds the workspace outputs first. If you skip tests and want a
+quick typecheck pass, run `npm run build:core` before `npm run typecheck`.
+
 If your change touches workspace packages or build output, also run:
 
 ```bash
 npm run build:core
 npm run build:swap
+npm run typecheck:core
+npm run typecheck:swap
+npm run lint:core
+npm run lint:swap
 npm run build
 ```
 
