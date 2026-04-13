@@ -77,6 +77,7 @@ export interface ActionContext {
 export interface AssetRegistry {
   getToken(symbol: string): Token | undefined;
   getTokenAddress(symbol: string, chainId: number): Address | undefined;
+  listTokens?(chainId: number): Token[];
   getChain(idOrName: number | string): Chain | undefined;
   nativeTokenAddress: Address;
 }

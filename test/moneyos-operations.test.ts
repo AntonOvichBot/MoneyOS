@@ -11,8 +11,10 @@ import {
   ViemReadClient,
   getTokenAddress,
   listTokens,
+  NATIVE_TOKEN_ADDRESS,
 } from "../src/index.js";
 import type {
+  AssetRegistry,
   ExecutionClient,
   ReadClient,
 } from "../src/index.js";
@@ -258,6 +260,64 @@ describe("MoneyOS.balances", () => {
     // Polygon built-ins: POL (native), USDC, USDT
     expect(balances.map((b) => b.symbol)).toEqual(["POL", "USDC", "USDT"]);
     expect(balances.every((b) => b.chainId === 137)).toBe(true);
+  });
+
+  it("uses the configured asset registry when it can enumerate tokens", async () => {
+    const read = createMockReadClient();
+    (read.getBalance as ReturnType<typeof vi.fn>).mockResolvedValue(
+      parseUnits("7", 18),
+    );
+    (read.readContract as ReturnType<typeof vi.fn>).mockResolvedValue(
+      42_000_000n,
+    );
+
+    const customAssets: AssetRegistry = {
+      nativeTokenAddress: NATIVE_TOKEN_ADDRESS,
+      getToken(symbol) {
+        return (
+          {
+            ALPHA: {
+              symbol: "ALPHA",
+              name: "Alpha",
+              decimals: 18,
+              addresses: {
+                42161: NATIVE_TOKEN_ADDRESS,
+              },
+            },
+            BETA: {
+              symbol: "BETA",
+              name: "Beta",
+              decimals: 6,
+              addresses: {
+                42161: "0x00000000000000000000000000000000000000bE",
+              },
+            },
+          }[symbol.toUpperCase()] ?? undefined
+        );
+      },
+      getTokenAddress(symbol, chainId) {
+        return this.getToken(symbol)?.addresses[chainId];
+      },
+      listTokens(chainId) {
+        if (chainId !== 42161) return [];
+        return [this.getToken("ALPHA")!, this.getToken("BETA")!];
+      },
+      getChain() {
+        return undefined;
+      },
+    };
+
+    const moneyos = new MoneyOS({ chainId: 42161, read, assets: customAssets });
+
+    const balances = await moneyos.balances({
+      address: SENDER,
+      chainId: 42161,
+    });
+
+    expect(balances.map((b) => b.symbol)).toEqual(["ALPHA", "BETA"]);
+    expect(balances.map((b) => b.amount)).toEqual(["7", "42"]);
+    expect(read.getBalance).toHaveBeenCalledTimes(1);
+    expect(read.readContract).toHaveBeenCalledTimes(1);
   });
 
   it("propagates underlying read failures", async () => {

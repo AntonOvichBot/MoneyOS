@@ -162,7 +162,8 @@ export class MoneyOS {
   }
 
   /**
-   * Read balances for every built-in token registered on the given chain.
+   * Read balances for every token the configured asset registry can enumerate
+   * on the given chain.
    *
    * Fails fast if any underlying read fails — callers that need partial
    * results should iterate `listTokens(chainId)` and call {@link balance}
@@ -173,7 +174,13 @@ export class MoneyOS {
   ): Promise<Balance[]> {
     const chainId = options?.chainId ?? this.runtimeConfig.defaultChainId;
     const account = options?.address ?? this.address;
-    const candidates = listTokens(chainId);
+    const candidates =
+      this.assets.listTokens?.(chainId) ??
+      listTokens(chainId).filter(
+        (token) =>
+          this.assets.getToken(token.symbol) !== undefined &&
+          this.assets.getTokenAddress(token.symbol, chainId) !== undefined,
+      );
     return Promise.all(
       candidates.map((token) =>
         this.balance(token.symbol, { address: account, chainId }),
