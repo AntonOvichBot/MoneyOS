@@ -2,7 +2,7 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
-## 0.5.1-rc.2 - 2026-04-13
+## 0.5.1 - 2026-04-13
 
 ### Fixed
 
