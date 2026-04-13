@@ -1,5 +1,4 @@
 export { OdosProvider } from "./providers/odos.js";
-export { ZeroExProvider } from "./providers/zeroex.js";
 export { executeSwap, swapAction, createSwapTool } from "./tool.js";
 export { moneyosCliTool } from "./cli-tool.js";
 export type {
