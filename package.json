@@ -51,7 +51,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/1231chegites/moneyos.git"
+    "url": "git+https://github.com/1231CheGites/MoneyOS.git"
   },
   "engines": {
     "node": ">=18"

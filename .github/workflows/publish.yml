@@ -1,0 +1,75 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "moneyos-v*"
+      - "moneyos-core-v*"
+      - "moneyos-swap-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify packed release artifacts
+        run: npm run release:verify
+
+      - name: Select publish target from tag
+        id: target
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          case "$REF_NAME" in
+            v*)
+              echo "package_dir=." >> "$GITHUB_OUTPUT"
+              echo "package_name=moneyos" >> "$GITHUB_OUTPUT"
+              ;;
+            moneyos-v*)
+              echo "package_dir=." >> "$GITHUB_OUTPUT"
+              echo "package_name=moneyos" >> "$GITHUB_OUTPUT"
+              ;;
+            moneyos-core-v*)
+              echo "package_dir=packages/core" >> "$GITHUB_OUTPUT"
+              echo "package_name=@moneyos/core" >> "$GITHUB_OUTPUT"
+              ;;
+            moneyos-swap-v*)
+              echo "package_dir=packages/swap" >> "$GITHUB_OUTPUT"
+              echo "package_name=@moneyos/swap" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported tag: $REF_NAME" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Verify npm auth
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm whoami
+
+      - name: Publish package
+        working-directory: ${{ steps.target.outputs.package_dir }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --access public

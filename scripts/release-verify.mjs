@@ -84,10 +84,9 @@ function assertChangelogContainsVersion(label, changelogPath, version) {
 // Callers must pass the exact package.json version string, including any
 // pre-release suffix, not a prefix such as "0.5.0" for "0.5.0-beta.1".
 function assertOutputIncludesVersion(label, output, version) {
-  const versionPattern = new RegExp(`(^|\\b)${escapeRegExp(version)}(\\b|$)`);
-  if (!versionPattern.test(output)) {
+  if (output.trim() !== version) {
     throw new Error(
-      `${label} version output mismatch: expected to contain ${version}, got ${output}.`,
+      `${label} version output mismatch: expected ${version}, got ${output}.`,
     );
   }
 }
@@ -226,7 +225,15 @@ function main() {
     assertPackedFiles(
       "moneyos",
       rootFiles,
-      ["package.json", "README.md", "CHANGELOG.md", "dist/index.js", "dist/index.cjs", "dist/cli/index.js"],
+      [
+        "package.json",
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE",
+        "dist/index.js",
+        "dist/index.cjs",
+        "dist/cli/index.js",
+      ],
     );
     assertNoForbiddenPackedFiles("moneyos", rootFiles);
     smokeMoneyos(join(packDestination, rootPack.filename), rootPackage.version);
@@ -236,7 +243,7 @@ function main() {
     assertPackedFiles(
       "@moneyos/core",
       coreFiles,
-      ["package.json", "README.md", "CHANGELOG.md", "dist/index.js", "dist/index.cjs"],
+      ["package.json", "README.md", "CHANGELOG.md", "LICENSE", "dist/index.js", "dist/index.cjs"],
     );
     assertNoForbiddenPackedFiles("@moneyos/core", coreFiles);
     smokeCore(join(packDestination, corePack.filename));
@@ -246,7 +253,7 @@ function main() {
     assertPackedFiles(
       "@moneyos/swap",
       swapFiles,
-      ["package.json", "README.md", "CHANGELOG.md", "dist/index.js", "dist/index.cjs"],
+      ["package.json", "README.md", "CHANGELOG.md", "LICENSE", "dist/index.js", "dist/index.cjs"],
     );
     assertNoForbiddenPackedFiles("@moneyos/swap", swapFiles);
     smokeSwap(

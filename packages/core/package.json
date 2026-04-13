@@ -22,12 +22,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/1231chegites/moneyos.git",
+    "url": "git+https://github.com/1231CheGites/MoneyOS.git",
     "directory": "packages/core"
   },
-  "homepage": "https://github.com/1231chegites/moneyos/tree/main/packages/core",
+  "homepage": "https://github.com/1231CheGites/MoneyOS/tree/main/packages/core",
   "bugs": {
-    "url": "https://github.com/1231chegites/moneyos/issues"
+    "url": "https://github.com/1231CheGites/MoneyOS/issues"
   },
   "publishConfig": {
     "access": "public"
