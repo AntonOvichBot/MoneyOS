@@ -522,6 +522,106 @@ describe("cli tool manager", () => {
     ]);
   });
 
+  it("moneyos update --check skips incompatible latest tool versions without mutating the tool home", async () => {
+    const catalog = {
+      "@moneyos/swap": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+        }),
+      },
+    };
+    const harness = registerHarness(catalog);
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await manager.addTool("swap");
+    catalog["@moneyos/swap"] = {
+      version: "0.2.0",
+      cliTool: {
+        version: 2,
+        name: "swap",
+        commandPath: ["swap"],
+        description: "Swap tokens",
+        createCommand(ctx: { Command: typeof Command }) {
+          return new ctx.Command("swap");
+        },
+      },
+    };
+
+    await expect(manager.updateTools({ check: true })).resolves.toEqual([
+      expect.objectContaining({
+        current: expect.objectContaining({
+          packageName: "@moneyos/swap",
+          packageVersion: "0.1.0",
+        }),
+        state: "skipped",
+        reason: expect.stringMatching(/unsupported moneyosCliTool\.version 2/i),
+      }),
+    ]);
+    expect(harness.installs).toEqual(["@moneyos/swap"]);
+    expect(readDependencies(harness.paths)).toEqual(
+      expect.objectContaining({
+        "@moneyos/swap": "0.1.0",
+      }),
+    );
+    expect(manager.getRegistryEntries()).toEqual([
+      expect.objectContaining({
+        packageName: "@moneyos/swap",
+        packageVersion: "0.1.0",
+      }),
+    ]);
+  });
+
+  it("moneyos update <unknown> rejects without mutating the registry", async () => {
+    const harness = registerHarness({
+      "@moneyos/swap": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+        }),
+      },
+    });
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await manager.addTool("swap");
+
+    await expect(manager.updateTools({ tool: "bank" })).rejects.toThrow(
+      "Tool bank is not installed.",
+    );
+    expect(harness.installs).toEqual(["@moneyos/swap"]);
+    expect(readDependencies(harness.paths)).toEqual(
+      expect.objectContaining({
+        "@moneyos/swap": "0.1.0",
+      }),
+    );
+    expect(manager.getRegistryEntries()).toEqual([
+      expect.objectContaining({
+        packageName: "@moneyos/swap",
+        packageVersion: "0.1.0",
+      }),
+    ]);
+  });
+
   it("moneyos update reports broken installed tools without trying to auto-heal them", async () => {
     const catalog = {
       "@moneyos/swap": {
