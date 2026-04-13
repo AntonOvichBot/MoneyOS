@@ -31,6 +31,7 @@ Intent v1 shape should stay generic enough to express execution plainly:
 ```ts
 Intent {
   account: address
+  sponsor: address
   nonceKey: uint192
   nonceSeq: uint64
   validAfter: uint48
@@ -39,6 +40,12 @@ Intent {
 }
 ```
 
+Where `sponsor` is an on-chain address binding:
+- `address(0)` means any sponsor or self-pay path may submit
+- non-zero means only that sponsor may submit the intent
+
+V1 production flow should use non-zero sponsor binding.
+
 The root owner key remains the ultimate authority. Authorized keys may be added
 with explicit scope such as:
 - allowed selectors
@@ -46,6 +53,10 @@ with explicit scope such as:
 - maxAmount
 - validAfter
 - validUntil
+
+Authorized keys in v1 are **user-side keys**, not MoneyOS-held keys. The
+MoneyOS relay sponsors gas and enforces policy, but it must not hold user
+signing authority.
 
 Gas sponsorship stays **outside core** in a required MoneyOS-operated service
 layer:
@@ -56,6 +67,10 @@ layer:
 - Arbitrum submission adapter
 - pause / kill switch
 
+Relay policy in v1 should be an explicit static allowlist for MoneyOS-native
+send + swap paths. The contract layer enforces per-key scope; the relay layer
+enforces what MoneyOS is willing to sponsor.
+
 V1 explicitly defers:
 - ERC-4337 bundler/paymaster integration
 - paymaster contracts
@@ -64,6 +79,9 @@ V1 explicitly defers:
 - public third-party sponsorship
 - broader session-key UX
 - bank/card/provider bindings
+
+Sponsored swaps in v1 should use an atomic `calls[]` path, for example
+`approve + swap` in one signed execution, rather than a stranded two-step flow.
 
 ## Why
 
@@ -83,6 +101,11 @@ account/auth surface once MoneyOS needs:
 
 This ADR chooses the smallest account model that still preserves a durable
 identity and authorization layer.
+
+Contract development and testing for this path should use **Foundry**. The
+reason is not style preference, but contract correctness: account validation,
+ERC-1271 behavior, CREATE2 determinism, scoped-key enforcement, and nonce logic
+benefit from fuzzing and invariant testing that Foundry handles well.
 
 It avoids two bad extremes:
 - **too thin**: quick gasless relay hack that becomes a dead end
@@ -128,13 +151,11 @@ general than the initial policy surface.
 - Later ERC-4337 support should be able to arrive as an adapter path instead of
   a full identity rewrite.
 - Engineering work now shifts toward getting the account/auth surface right:
-  ABI, intent hashing, nonce semantics, validation rules, and relay policy.
+  ABI, intent hashing, nonce semantics, validation rules, relay policy, and
+  user-side authorized-key lifecycle.
 
 ## Open questions
 
-- Should sponsored swap in v1 allow a 2-step `approve + swap` path or require
-  an atomic path?
 - What exact targets and selectors count as "MoneyOS-native" for relay policy?
-- What concrete per-wallet and global treasury caps should v1 use?
-- Should `sponsor` binding be mandatory in production intent validation from
-  day one?
+- What concrete per-wallet and global treasury caps should v1 use at launch?
+- What exact user-side automation-key minting and rotation UX should v1 expose?
