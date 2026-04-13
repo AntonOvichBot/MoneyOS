@@ -140,6 +140,88 @@ describe("local auth session", () => {
     }
   });
 
+  it("forwards per-request chain ids instead of pinning sends to the unlock-time chain", async () => {
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("cross");
+    const calls: CallRequest[] = [];
+    const forwardingExecutor: ExecutionClient = {
+      mode: "eoa",
+      getAddress: () => TEST_ADDRESS,
+      async send(call: CallRequest): Promise<ExecutionResult> {
+        calls.push(call);
+        return {
+          hash: `0x${String(call.chainId).padStart(64, "0")}` as Hex,
+          chainId: call.chainId,
+        };
+      },
+      capabilities() {
+        return {
+          sponsoredGas: false,
+          batching: false,
+          simulation: false,
+        };
+      },
+    };
+    const handle = await startSessionServer(
+      {
+        type: "start",
+        privateKey: TEST_PK,
+        chainId: 42161,
+        socketPath,
+        tokenPath,
+        ttlMs: 5000,
+      },
+      {
+        executor: forwardingExecutor,
+      },
+    );
+
+    try {
+      const client = new SessionExecutionClient({
+        socketPath,
+        tokenPath,
+        address: TEST_ADDRESS,
+      });
+
+      await expect(
+        client.send({
+          to: TEST_ADDRESS,
+          chainId: 1,
+          value: 0n,
+        }),
+      ).resolves.toEqual({
+        hash: `0x${"1".padStart(64, "0")}` as Hex,
+        chainId: 1,
+      });
+
+      await expect(
+        client.send({
+          to: TEST_ADDRESS,
+          chainId: 137,
+          value: 0n,
+        }),
+      ).resolves.toEqual({
+        hash: `0x${"137".padStart(64, "0")}` as Hex,
+        chainId: 137,
+      });
+
+      expect(calls).toEqual([
+        {
+          to: TEST_ADDRESS,
+          chainId: 1,
+          value: 0n,
+        },
+        {
+          to: TEST_ADDRESS,
+          chainId: 137,
+          value: 0n,
+        },
+      ]);
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
   it("skips unix-only permission checks when the platform is win32", async () => {
     const originalPlatform = process.platform;
     const baseDir = mkdtempSync(join(tmpdir(), "mos-win32-"));

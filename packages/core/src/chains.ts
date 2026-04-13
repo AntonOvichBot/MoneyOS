@@ -11,14 +11,14 @@ export const chains: Record<string, Chain> = {
   ethereum: {
     id: 1,
     name: "Ethereum",
-    rpcUrl: "https://eth.public-rpc.com",
+    rpcUrl: "https://ethereum-rpc.publicnode.com",
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     blockExplorer: "https://etherscan.io",
   },
   polygon: {
     id: 137,
     name: "Polygon",
-    rpcUrl: "https://polygon-rpc.com",
+    rpcUrl: "https://polygon-bor-rpc.publicnode.com",
     nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
     blockExplorer: "https://polygonscan.com",
   },

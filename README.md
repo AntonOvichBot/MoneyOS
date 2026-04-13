@@ -86,6 +86,12 @@ const moneyos = createMoneyOS({
 });
 ```
 
+Session-backed writes currently support the registered chain set only:
+Arbitrum `42161`, Ethereum `1`, and Polygon `137`. Each send/swap request
+carries its own `chainId`, so a single unlocked session can target any of
+those supported chains. A custom `rpcUrl` still applies only to the configured
+default chain; other supported chains use the built-in chain registry RPC URLs.
+
 Tool packages should still execute against `moneyos.runtime`; they should not
 import `connectLocalSession()` themselves.
 
