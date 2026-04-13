@@ -58,6 +58,13 @@ Example:
 npm install -g moneyos
 moneyos init
 moneyos auth unlock
+moneyos balance --all
+```
+
+If you want to try swap from the CLI, fund the wallet first with the token you
+want to swap and enough gas for the target chain, then install the tool:
+
+```bash
 moneyos add swap
 moneyos tools
 moneyos swap 0.1 RYZE ETH
