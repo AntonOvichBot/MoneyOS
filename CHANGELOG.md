@@ -2,6 +2,19 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## 0.5.1-rc.2 - 2026-04-13
+
+### Fixed
+
+- publish workflow now upgrades npm to latest before publish, which
+  activates the Trusted Publishing OIDC exchange that Node 22's bundled
+  npm does not support out of the box; without this the previous
+  prerelease attempts failed at npm auth despite correct Trusted
+  Publisher configuration
+- publish command now includes `--provenance` again; it was accidentally
+  dropped during the `0.5.1-rc.1` auth-path revert, which would have
+  resulted in unsigned releases even if publish succeeded
+
 ## 0.5.1-rc.1 - 2026-04-13
 
 ### Changed
