@@ -2,7 +2,7 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
-## 0.5.1-rc.0 - 2026-04-13
+## 0.5.1-rc.1 - 2026-04-13
 
 ### Changed
 
@@ -14,6 +14,9 @@ All notable changes to the repo's current `main` branch are documented here.
 - `CONTRIBUTING.md` now documents the forward release tag convention:
   `moneyos-v<version>` for root releases and `moneyos-<package>-v<version>` for
   workspace packages, with bare `v<version>` retained only for historical tags
+- the publish workflow now isolates the actual `npm publish` command from
+  token-based npm auth config and publishes prerelease versions under the
+  `next` dist-tag instead of `latest`
 
 ## 0.5.0 - 2026-04-12
 
