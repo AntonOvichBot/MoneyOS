@@ -63,6 +63,11 @@ type SessionResponse =
     }
   | { id: string; ok: false; error: string };
 
+interface StoredSendResponse {
+  fingerprint: string;
+  response: Promise<SessionResponse>;
+}
+
 const SESSION_CONTROL_TIMEOUT_MS = 750;
 // Intentionally much longer than control operations: on-chain submission does
 // real RPC work, and PR #12 fixed a live timeout-after-broadcast bug here.
@@ -113,6 +118,10 @@ function ensureSecureParent(path: string): void {
 
 function createRequestId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+function createSendRequestFingerprint(request: Extract<SessionRequest, { type: "send" }>): string {
+  return JSON.stringify(request.params);
 }
 
 function loadSessionToken(tokenPath: string): string {
@@ -254,6 +263,35 @@ async function sendSessionRequest(
   });
 }
 
+function isRetryableSessionTransportError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  if (
+    error.message === "Session daemon closed the connection unexpectedly."
+    || error.message === "Timed out waiting for local MoneyOS session."
+  ) {
+    return true;
+  }
+
+  const code = (error as NodeJS.ErrnoException).code;
+  return (
+    code === "ECONNRESET"
+    || code === "EPIPE"
+    || code === "ETIMEDOUT"
+    || code === "ERR_STREAM_DESTROYED"
+  );
+}
+
+function unwrapSessionSendResponse(response: SessionResponse): ExecutionResult {
+  if (!response.ok) {
+    throw new Error(response.error);
+  }
+
+  return response.result as ExecutionResult;
+}
+
 export async function getSessionStatus(
   socketPath: string,
   tokenPath: string,
@@ -319,11 +357,28 @@ export class SessionExecutionClient implements ExecutionClient {
   }
 
   async send(call: CallRequest): Promise<ExecutionResult> {
+    const requestId = createRequestId();
+
+    try {
+      return await this.sendWithRequestId(requestId, call);
+    } catch (error) {
+      if (!isRetryableSessionTransportError(error)) {
+        throw error;
+      }
+
+      return this.sendWithRequestId(requestId, call);
+    }
+  }
+
+  private async sendWithRequestId(
+    requestId: string,
+    call: CallRequest,
+  ): Promise<ExecutionResult> {
     const response = await sendSessionRequest(
       this.socketPath,
       this.tokenPath,
       {
-        id: createRequestId(),
+        id: requestId,
         type: "send",
         params: {
           to: call.to,
@@ -334,12 +389,7 @@ export class SessionExecutionClient implements ExecutionClient {
       },
       SESSION_SEND_TIMEOUT_MS,
     );
-
-    if (!response.ok) {
-      throw new Error(response.error);
-    }
-
-    return response.result as ExecutionResult;
+    return unwrapSessionSendResponse(response);
   }
 
   capabilities() {
@@ -371,6 +421,9 @@ export async function startSessionServer(
   });
   const expiresAt = new Date(Date.now() + start.ttlMs);
   const token = randomBytes(32).toString("hex");
+  // Retain send results for the session lifetime so a retry with the same
+  // request ID never rebroadcasts after a late disconnect.
+  const sendResponses = new Map<string, StoredSendResponse>();
   writeSecureToken(start.tokenPath, token);
 
   let closed = false;
@@ -472,21 +525,53 @@ export async function startSessionServer(
         socket.setTimeout(SESSION_SEND_TIMEOUT_MS, () => {
           socket.destroy();
         });
-        const result = await executor.send({
-          to: request.params.to,
-          chainId: request.params.chainId,
-          data: request.params.data,
-          value:
-            request.params.value !== undefined
-              ? BigInt(request.params.value)
-              : undefined,
+        const fingerprint = createSendRequestFingerprint(request);
+        const existing = sendResponses.get(request.id);
+        if (existing) {
+          if (existing.fingerprint !== fingerprint) {
+            respond({
+              id: request.id,
+              ok: false,
+              error: "Session send request IDs cannot be reused with different parameters.",
+            });
+            return;
+          }
+
+          respond(await existing.response);
+          return;
+        }
+
+        const responsePromise = (async (): Promise<SessionResponse> => {
+          try {
+            const result = await executor.send({
+              to: request.params.to,
+              chainId: request.params.chainId,
+              data: request.params.data,
+              value:
+                request.params.value !== undefined
+                  ? BigInt(request.params.value)
+                  : undefined,
+            });
+
+            return {
+              id: request.id,
+              ok: true,
+              result,
+            };
+          } catch (error) {
+            return {
+              id: request.id,
+              ok: false,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        })();
+        sendResponses.set(request.id, {
+          fingerprint,
+          response: responsePromise,
         });
 
-        respond({
-          id: request.id,
-          ok: true,
-          result,
-        });
+        respond(await responsePromise);
       } catch (error) {
         respond({
           id: request.id,

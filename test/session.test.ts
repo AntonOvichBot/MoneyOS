@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { chmodSync, mkdtempSync, rmSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { chmodSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hex } from "viem";
@@ -20,6 +21,13 @@ const TEST_PK: Hex =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const TEST_ADDRESS = privateKeyToAccount(TEST_PK).address;
 
+interface RawSessionResponse {
+  id: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+
 function makeSessionPaths(prefix: string): {
   baseDir: string;
   socketPath: string;
@@ -34,6 +42,98 @@ function makeSessionPaths(prefix: string): {
   const tokenPath = join(baseDir, "t");
   return { baseDir, socketPath, tokenPath };
 }
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+function readSocketLine(socket: net.Socket): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let buffer = "";
+
+    const onData = (chunk: Buffer) => {
+      buffer += chunk.toString("utf8");
+      const index = buffer.indexOf("\n");
+      if (index >= 0) {
+        cleanup();
+        resolve(buffer.slice(0, index));
+      }
+    };
+
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+
+    const onClose = () => {
+      cleanup();
+      reject(new Error("Session daemon closed the connection unexpectedly."));
+    };
+
+    const cleanup = () => {
+      socket.off("data", onData);
+      socket.off("error", onError);
+      socket.off("close", onClose);
+    };
+
+    socket.on("data", onData);
+    socket.once("error", onError);
+    socket.once("close", onClose);
+  });
+}
+
+async function sendRawSessionRequest(
+  socketPath: string,
+  tokenPath: string,
+  request: {
+    id: string;
+    type: "send";
+    params: {
+      to: Hex;
+      chainId: number;
+      data?: Hex;
+      value?: string;
+    };
+  },
+): Promise<RawSessionResponse> {
+  const socket = net.createConnection(socketPath);
+  const payload = {
+    ...request,
+    token: readFileSync(tokenPath, "utf8").trim(),
+  };
+
+  return new Promise((resolve, reject) => {
+    socket.once("connect", async () => {
+      try {
+        socket.write(`${JSON.stringify(payload)}\n`);
+        const line = await readSocketLine(socket);
+        socket.end();
+        resolve(JSON.parse(line) as RawSessionResponse);
+      } catch (error) {
+        socket.destroy();
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+
+    socket.once("error", (error) => {
+      reject(error);
+    });
+  });
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("local auth session", () => {
   it("reports unlocked status and locks cleanly", async () => {
@@ -135,6 +235,172 @@ describe("local auth session", () => {
         }),
       ).resolves.toEqual(expectedResult);
     } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it("retries a dropped send response once without rebroadcasting the transaction", async () => {
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("retry");
+    const sendStarted = createDeferred<void>();
+    let sendCalls = 0;
+    const expectedResult: ExecutionResult = {
+      hash: `0x${"2".repeat(64)}` as Hex,
+      chainId: 42161,
+    };
+    const executor: ExecutionClient = {
+      mode: "eoa",
+      getAddress: () => TEST_ADDRESS,
+      async send(call: CallRequest): Promise<ExecutionResult> {
+        sendCalls += 1;
+        sendStarted.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return {
+          hash: expectedResult.hash,
+          chainId: call.chainId,
+        };
+      },
+      capabilities() {
+        return {
+          sponsoredGas: false,
+          batching: false,
+          simulation: false,
+        };
+      },
+    };
+    const handle = await startSessionServer(
+      {
+        type: "start",
+        privateKey: TEST_PK,
+        chainId: 42161,
+        socketPath,
+        tokenPath,
+        ttlMs: 5000,
+      },
+      {
+        executor,
+      },
+    );
+
+    const originalCreateConnection = net.createConnection.bind(net);
+    let connectionCount = 0;
+    vi.spyOn(net, "createConnection").mockImplementation(((...args: unknown[]) => {
+      const socket = originalCreateConnection(...args as [string]);
+      connectionCount += 1;
+
+      if (connectionCount === 1) {
+        const originalWrite = socket.write.bind(socket);
+        let dropped = false;
+        socket.write = ((...writeArgs: unknown[]) => {
+          const result = originalWrite(...writeArgs as [string]);
+          if (!dropped) {
+            dropped = true;
+            void sendStarted.promise.then(() => {
+              socket.destroy();
+            });
+          }
+          return result;
+        }) as typeof socket.write;
+      }
+
+      return socket;
+    }) as typeof net.createConnection);
+
+    try {
+      const client = new SessionExecutionClient({
+        socketPath,
+        tokenPath,
+        address: TEST_ADDRESS,
+      });
+
+      await expect(
+        client.send({
+          to: TEST_ADDRESS,
+          chainId: 42161,
+          value: 0n,
+        }),
+      ).resolves.toEqual(expectedResult);
+
+      expect(sendCalls).toBe(1);
+      expect(connectionCount).toBe(2);
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates duplicate send request ids while the first request is still in flight", async () => {
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("idem");
+    const release = createDeferred<void>();
+    let sendCalls = 0;
+    const executor: ExecutionClient = {
+      mode: "eoa",
+      getAddress: () => TEST_ADDRESS,
+      async send(call: CallRequest): Promise<ExecutionResult> {
+        sendCalls += 1;
+        await release.promise;
+        return {
+          hash: `0x${"3".repeat(64)}` as Hex,
+          chainId: call.chainId,
+        };
+      },
+      capabilities() {
+        return {
+          sponsoredGas: false,
+          batching: false,
+          simulation: false,
+        };
+      },
+    };
+    const handle = await startSessionServer(
+      {
+        type: "start",
+        privateKey: TEST_PK,
+        chainId: 42161,
+        socketPath,
+        tokenPath,
+        ttlMs: 5000,
+      },
+      {
+        executor,
+      },
+    );
+
+    try {
+      const request = {
+        id: "send-idem-1",
+        type: "send" as const,
+        params: {
+          to: TEST_ADDRESS,
+          chainId: 42161,
+          value: "0",
+        },
+      };
+      const first = sendRawSessionRequest(socketPath, tokenPath, request);
+      const second = sendRawSessionRequest(socketPath, tokenPath, request);
+      release.resolve();
+
+      await expect(Promise.all([first, second])).resolves.toEqual([
+        {
+          id: "send-idem-1",
+          ok: true,
+          result: {
+            hash: `0x${"3".repeat(64)}`,
+            chainId: 42161,
+          },
+        },
+        {
+          id: "send-idem-1",
+          ok: true,
+          result: {
+            hash: `0x${"3".repeat(64)}`,
+            chainId: 42161,
+          },
+        },
+      ]);
+      expect(sendCalls).toBe(1);
+    } finally {
+      release.resolve();
       await handle.close();
       rmSync(baseDir, { recursive: true, force: true });
     }
