@@ -15,7 +15,13 @@ Root CLI path:
 npm install -g moneyos
 moneyos init
 moneyos auth unlock
-# fund the wallet with the input token and gas before swapping
+moneyos balance --all
+```
+
+If you want to swap from the CLI, fund the wallet first with the input token
+and enough gas for the target chain, then add the tool:
+
+```bash
 moneyos add swap
 moneyos swap 0.1 RYZE ETH
 ```

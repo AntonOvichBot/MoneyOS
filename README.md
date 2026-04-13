@@ -122,13 +122,19 @@ plug in.
 Swap still lives in the separate `@moneyos/swap` package, but the root CLI now
 owns first-class tool install/use UX for CLI-integrated packages.
 
-For CLI usage, install the root package and then add tools into the user-level
-MoneyOS tool home:
+For CLI usage, install the root package first and validate the wallet surface:
 
 ```bash
 npm install -g moneyos
 moneyos init
 moneyos auth unlock
+moneyos balance --all
+```
+
+If you want to use swap from the CLI, fund the wallet first with the input
+token and enough gas for the target chain, then add the tool:
+
+```bash
 moneyos add swap
 moneyos tools
 moneyos swap 0.1 RYZE ETH
