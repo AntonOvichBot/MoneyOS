@@ -320,6 +320,72 @@ describe("MoneyOS.balances", () => {
     expect(read.readContract).toHaveBeenCalledTimes(1);
   });
 
+  it("filters built-in tokens through a custom registry when listTokens is absent", async () => {
+    const read = createMockReadClient();
+    (read.getBalance as ReturnType<typeof vi.fn>).mockResolvedValue(
+      parseUnits("0.5", 18),
+    );
+    (read.readContract as ReturnType<typeof vi.fn>).mockImplementation(
+      async ({ address }: { address: Address }) => {
+        if (address === getTokenAddress("USDC", 42161)) return 1_000_000n;
+        if (address === getTokenAddress("USDT", 42161)) return 2_000_000n;
+        throw new Error(`unexpected contract read at ${address}`);
+      },
+    );
+
+    const customAssets: AssetRegistry = {
+      nativeTokenAddress: NATIVE_TOKEN_ADDRESS,
+      getToken(symbol) {
+        return (
+          {
+            ETH: {
+              symbol: "ETH",
+              name: "Ether",
+              decimals: 18,
+              addresses: {
+                42161: NATIVE_TOKEN_ADDRESS,
+              },
+            },
+            USDC: {
+              symbol: "USDC",
+              name: "USD Coin",
+              decimals: 6,
+              addresses: {
+                42161: getTokenAddress("USDC", 42161)!,
+              },
+            },
+            USDT: {
+              symbol: "USDT",
+              name: "Tether USD",
+              decimals: 6,
+              addresses: {
+                42161: getTokenAddress("USDT", 42161)!,
+              },
+            },
+          }[symbol.toUpperCase()] ?? undefined
+        );
+      },
+      getTokenAddress(symbol, chainId) {
+        return this.getToken(symbol)?.addresses[chainId];
+      },
+      getChain() {
+        return undefined;
+      },
+    };
+
+    const moneyos = new MoneyOS({ chainId: 42161, read, assets: customAssets });
+
+    await expect(
+      moneyos.balances({ address: SENDER, chainId: 42161 }),
+    ).resolves.toMatchObject([
+      { symbol: "ETH", amount: "0.5", chainId: 42161 },
+      { symbol: "USDC", amount: "1", chainId: 42161 },
+      { symbol: "USDT", amount: "2", chainId: 42161 },
+    ]);
+    expect(read.getBalance).toHaveBeenCalledTimes(1);
+    expect(read.readContract).toHaveBeenCalledTimes(2);
+  });
+
   it("propagates underlying read failures", async () => {
     const read = createMockReadClient();
     (read.readContract as ReturnType<typeof vi.fn>).mockRejectedValue(
