@@ -93,6 +93,11 @@ const WALLET_WRITE_LABELS: SecureWriteLabels = {
   fileDescription: "Wallet file",
 };
 
+function shouldEnforcePosixPermissions(): boolean {
+  // Windows ACLs do not map cleanly to Node's POSIX-style mode bits.
+  return process.platform !== "win32";
+}
+
 function normalizePassphrase(passphrase: string): string {
   return passphrase.normalize("NFC");
 }
@@ -117,6 +122,10 @@ function ensureParentDir(path: string, label: string): void {
     return;
   }
 
+  if (!shouldEnforcePosixPermissions()) {
+    return;
+  }
+
   const mode = statSync(dir).mode & 0o777;
   if ((mode & 0o077) !== 0) {
     throw new Error(
@@ -127,6 +136,10 @@ function ensureParentDir(path: string, label: string): void {
 
 function assertSecureFileMode(path: string, label: string): void {
   if (!existsSync(path)) {
+    return;
+  }
+
+  if (!shouldEnforcePosixPermissions()) {
     return;
   }
 
@@ -284,7 +297,9 @@ function writeFileAtomicSecure(
   }
 
   renameSync(tmpPath, path);
-  chmodSync(path, SECURE_FILE_MODE);
+  if (shouldEnforcePosixPermissions()) {
+    chmodSync(path, SECURE_FILE_MODE);
+  }
 }
 
 async function encryptWallet(params: {

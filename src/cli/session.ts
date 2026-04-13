@@ -73,6 +73,11 @@ const SECURE_FILE_MODE = 0o600;
 const SERVER_SOCKET_TIMEOUT_MS = 5000;
 const SESSION_SHUTDOWN_TIMEOUT_MS = 15000;
 
+function shouldEnforcePosixPermissions(): boolean {
+  // Windows ACLs do not map cleanly to Node's POSIX-style mode bits.
+  return process.platform !== "win32";
+}
+
 function isWindowsPipe(path: string): boolean {
   return path.startsWith("\\\\.\\pipe\\");
 }
@@ -91,6 +96,10 @@ function ensureSecureParent(path: string): void {
   const dir = dirname(path);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: SECURE_DIR_MODE });
+    return;
+  }
+
+  if (!shouldEnforcePosixPermissions()) {
     return;
   }
 
@@ -117,7 +126,9 @@ function loadSessionToken(tokenPath: string): string {
 function writeSecureToken(tokenPath: string, token: string): void {
   ensureSecureParent(tokenPath);
   writeFileSync(tokenPath, `${token}\n`, { mode: SECURE_FILE_MODE });
-  chmodSync(tokenPath, SECURE_FILE_MODE);
+  if (shouldEnforcePosixPermissions()) {
+    chmodSync(tokenPath, SECURE_FILE_MODE);
+  }
 }
 
 function sessionFilesGone(socketPath: string, tokenPath: string): boolean {
@@ -492,7 +503,10 @@ export async function startSessionServer(
       reject(error);
     });
     server.listen(start.socketPath, () => {
-      if (!isWindowsPipe(start.socketPath)) {
+      if (
+        shouldEnforcePosixPermissions()
+        && !isWindowsPipe(start.socketPath)
+      ) {
         chmodSync(start.socketPath, SECURE_FILE_MODE);
       }
       resolve();

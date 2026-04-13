@@ -154,6 +154,34 @@ describe("FileEncryptedWalletStore", () => {
     }
   });
 
+  it("skips unix-only permission checks when the platform is win32", async () => {
+    const originalPlatform = process.platform;
+    const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-encrypted-wallet-"));
+    const insecureDir = join(tmpDir, "unsafe-wallet-dir");
+    const walletPath = join(insecureDir, "wallet.json");
+    const store = new FileEncryptedWalletStore(walletPath);
+
+    try {
+      mkdirSync(insecureDir, { recursive: true, mode: 0o777 });
+      chmodSync(insecureDir, 0o777);
+      Object.defineProperty(process, "platform", { value: "win32" });
+
+      await expect(
+        store.save({
+          privateKey: TEST_PK,
+          passphrase: "secret passphrase",
+        }),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          address: TEST_ADDRESS,
+        }),
+      );
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it("rotates the wallet password without changing wallet metadata", async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), "moneyos-encrypted-wallet-"));
     const walletPath = join(tmpDir, "wallet.json");

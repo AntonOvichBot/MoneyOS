@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Hex } from "viem";
@@ -136,6 +136,37 @@ describe("local auth session", () => {
       ).resolves.toEqual(expectedResult);
     } finally {
       await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips unix-only permission checks when the platform is win32", async () => {
+    const originalPlatform = process.platform;
+    const baseDir = mkdtempSync(join(tmpdir(), "mos-win32-"));
+    const socketPath = join(baseDir, "s.sock");
+    const tokenPath = join(baseDir, "t");
+    chmodSync(baseDir, 0o777);
+    Object.defineProperty(process, "platform", { value: "win32" });
+
+    try {
+      const handle = await startSessionServer({
+        type: "start",
+        privateKey: TEST_PK,
+        chainId: 42161,
+        socketPath,
+        tokenPath,
+        ttlMs: 5000,
+      });
+
+      try {
+        expect(await getSessionStatus(socketPath, tokenPath)).toEqual(
+          expect.objectContaining({ address: TEST_ADDRESS }),
+        );
+      } finally {
+        await handle.close();
+      }
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
       rmSync(baseDir, { recursive: true, force: true });
     }
   });
