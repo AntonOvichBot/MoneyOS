@@ -97,18 +97,44 @@ npm run test
 Build order matters: `@moneyos/core` must be built before the root package and
 the downstream workspace packages.
 
-## Publishing
+## Releases
 
-- package name: `moneyos`
-- workspace packages: `@moneyos/core`, `@moneyos/swap`
-- published workspace versions: `@moneyos/core@0.1.0`, `@moneyos/swap@0.1.0`
-- current `moneyos` releases keep swap out of the root package; install
-  `@moneyos/swap` separately when you need swap
-- before publish: verify registry ownership, confirm packed tarballs include
-  built artifacts, and validate the install surface
-- test before publish: `npm pack --dry-run`, install the tarball in a clean
-  temp directory, verify CLI behavior and package shape
-- keep package-boundary changes in sync with [`docs/architecture.md`](docs/architecture.md)
+Each publishable package has its own tag namespace:
+
+- root `moneyos`: `moneyos-v<version>` (e.g. `moneyos-v0.5.1`)
+- `@moneyos/core`: `moneyos-core-v<version>`
+- `@moneyos/swap`: `moneyos-swap-v<version>`
+
+Flow:
+
+1. Open a PR that bumps only `package.json` and the matching `CHANGELOG.md`
+   for the target package. Nothing else.
+2. Rebase and merge to `main` (branch protection requires linear history).
+3. Tag the merge SHA locally and push: `git tag -a <tag-name> <sha> -m "..."`,
+   then `git push origin <tag-name>`.
+4. The Publish workflow runs on tag push. It verifies the tag is reachable from
+   `origin/main`, checks tag-vs-package.json version, runs the full CI gates
+   and `release:verify`, then publishes to npm with provenance via Trusted
+   Publisher.
+
+dist-tags are derived from the tag name: versions without `-` go to `latest`,
+versions with `-<prerelease>` (e.g. `0.6.0-rc.0`) go to `next`.
+
+Currently published:
+
+| Package          | Version |
+|------------------|---------|
+| `moneyos`        | 0.5.1   |
+| `@moneyos/core`  | 0.1.0   |
+| `@moneyos/swap`  | 0.2.0   |
+
+Before cutting a release:
+
+- confirm the version bump lands in its own PR against `main`
+- confirm CI is green on the merged SHA
+- `npm pack --dry-run` in the target package dir to verify tarball contents
+- do not chain `-rc.N` tags to iterate on CI; use a draft PR or
+  `workflow_dispatch` instead
 
 ## Rules
 
@@ -119,3 +145,5 @@ the downstream workspace packages.
 - no secrets, API keys, or Aryze-internal references
 - open source ready from every commit
 - test packages locally before publishing to npm
+- never force-push `main` or force-update a published tag
+- never push a release tag from a commit not reachable from `origin/main`
