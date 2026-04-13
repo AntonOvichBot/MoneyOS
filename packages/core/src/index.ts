@@ -11,6 +11,7 @@ export {
   tokens,
   getToken,
   getTokenAddress,
+  listTokens,
   NATIVE_TOKEN_ADDRESS,
 } from "./tokens.js";
 

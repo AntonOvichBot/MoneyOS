@@ -16,6 +16,7 @@ import type {
 } from "@moneyos/core";
 import {
   defaultChain,
+  listTokens,
   NATIVE_TOKEN_ADDRESS,
 } from "@moneyos/core";
 import { ViemReadClient, EOAExecutor } from "./eoa.js";
@@ -158,6 +159,26 @@ export class MoneyOS {
       decimals: tokenInfo.decimals,
       chainId,
     };
+  }
+
+  /**
+   * Read balances for every built-in token registered on the given chain.
+   *
+   * Fails fast if any underlying read fails — callers that need partial
+   * results should iterate `listTokens(chainId)` and call {@link balance}
+   * with their own error handling.
+   */
+  async balances(
+    options?: { address?: Address; chainId?: number },
+  ): Promise<Balance[]> {
+    const chainId = options?.chainId ?? this.runtimeConfig.defaultChainId;
+    const account = options?.address ?? this.address;
+    const candidates = listTokens(chainId);
+    return Promise.all(
+      candidates.map((token) =>
+        this.balance(token.symbol, { address: account, chainId }),
+      ),
+    );
   }
 
   async send(

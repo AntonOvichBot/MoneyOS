@@ -35,6 +35,21 @@ describe("root cli surface", () => {
     expect(commandNames).not.toContain("swap");
   });
 
+  it("exposes --all on the balance command with an optional token argument", () => {
+    const program = createProgram({ toolManager: createEmptyToolManager() });
+    const balance = program.commands.find((c) => c.name() === "balance");
+    expect(balance, "balance command should exist").toBeDefined();
+    const options = balance!.options.map((o) => o.long);
+    expect(options).toContain("--all");
+    // The positional token argument must be optional so `balance --all`
+    // is accepted by commander.
+    const tokenArg = balance!.registeredArguments.find(
+      (a) => a.name() === "token",
+    );
+    expect(tokenArg, "balance should declare a token argument").toBeDefined();
+    expect(tokenArg!.required).toBe(false);
+  });
+
   it("treats symlinked npm bin paths as the cli entrypoint", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "moneyos-cli-entrypoint-"));
     const modulePath = new URL("../src/cli/index.ts", import.meta.url);

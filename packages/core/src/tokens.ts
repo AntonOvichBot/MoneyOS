@@ -68,3 +68,15 @@ export function getTokenAddress(
 ): Address | undefined {
   return getToken(symbol)?.addresses[chainId];
 }
+
+/**
+ * Return the built-in tokens that have an address on the given chain.
+ *
+ * Order matches declaration order in the `tokens` record so callers get
+ * stable output. Tokens that are not registered on `chainId` are omitted.
+ */
+export function listTokens(chainId: number): Token[] {
+  return Object.values(tokens).filter(
+    (token) => token.addresses[chainId] !== undefined,
+  );
+}

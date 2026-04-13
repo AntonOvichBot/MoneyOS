@@ -10,6 +10,7 @@ import {
   MoneyOS,
   ViemReadClient,
   getTokenAddress,
+  listTokens,
 } from "../src/index.js";
 import type {
   ExecutionClient,
@@ -189,6 +190,88 @@ describe("MoneyOS operations", () => {
     });
   });
 
+});
+
+describe("listTokens", () => {
+  it("returns only tokens registered on the requested chain", () => {
+    const arbitrum = listTokens(42161).map((t) => t.symbol);
+    expect(arbitrum).toEqual(["ETH", "USDC", "USDT", "RYZE"]);
+
+    const ethereum = listTokens(1).map((t) => t.symbol);
+    expect(ethereum).toEqual(["ETH", "USDC", "USDT"]);
+
+    const polygon = listTokens(137).map((t) => t.symbol);
+    expect(polygon).toEqual(["POL", "USDC", "USDT"]);
+  });
+
+  it("returns an empty list for unregistered chains", () => {
+    expect(listTokens(999999)).toEqual([]);
+  });
+});
+
+describe("MoneyOS.balances", () => {
+  it("reads every built-in token on the selected chain", async () => {
+    const read = createMockReadClient();
+    // One native lookup and one ERC-20 lookup per token; return distinct
+    // raw values so we can verify mapping is symbol-correct.
+    (read.getBalance as ReturnType<typeof vi.fn>).mockResolvedValue(
+      parseUnits("0.5", 18),
+    );
+    (read.readContract as ReturnType<typeof vi.fn>).mockImplementation(
+      async ({ address }: { address: Address }) => {
+        if (address === getTokenAddress("USDC", 42161)) return 1_000_000n;
+        if (address === getTokenAddress("USDT", 42161)) return 2_000_000n;
+        if (address === getTokenAddress("RYZE", 42161)) return parseUnits("3", 18);
+        throw new Error(`unexpected contract read at ${address}`);
+      },
+    );
+
+    const moneyos = new MoneyOS({ chainId: 42161, read });
+
+    const balances = await moneyos.balances({
+      address: SENDER,
+      chainId: 42161,
+    });
+
+    expect(balances.map((b) => b.symbol)).toEqual([
+      "ETH",
+      "USDC",
+      "USDT",
+      "RYZE",
+    ]);
+    expect(balances.map((b) => b.amount)).toEqual([
+      "0.5",
+      "1",
+      "2",
+      "3",
+    ]);
+    expect(read.getBalance).toHaveBeenCalledTimes(1);
+    expect(read.readContract).toHaveBeenCalledTimes(3);
+  });
+
+  it("defaults chainId to the configured default when not provided", async () => {
+    const read = createMockReadClient();
+    const moneyos = new MoneyOS({ chainId: 137, read });
+
+    const balances = await moneyos.balances({ address: SENDER });
+
+    // Polygon built-ins: POL (native), USDC, USDT
+    expect(balances.map((b) => b.symbol)).toEqual(["POL", "USDC", "USDT"]);
+    expect(balances.every((b) => b.chainId === 137)).toBe(true);
+  });
+
+  it("propagates underlying read failures", async () => {
+    const read = createMockReadClient();
+    (read.readContract as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("rpc down"),
+    );
+
+    const moneyos = new MoneyOS({ chainId: 42161, read });
+
+    await expect(
+      moneyos.balances({ address: SENDER, chainId: 42161 }),
+    ).rejects.toThrow("rpc down");
+  });
 });
 
 describe("unsupported chain guards", () => {
