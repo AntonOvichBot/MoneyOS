@@ -143,7 +143,10 @@ describe("local auth session", () => {
   it("skips unix-only permission checks when the platform is win32", async () => {
     const originalPlatform = process.platform;
     const baseDir = mkdtempSync(join(tmpdir(), "mos-win32-"));
-    const socketPath = join(baseDir, "s.sock");
+    const socketPath =
+      originalPlatform === "win32"
+        ? `\\\\.\\pipe\\mos-win32-${Date.now()}`
+        : join(baseDir, "s.sock");
     const tokenPath = join(baseDir, "t");
     chmodSync(baseDir, 0o777);
     Object.defineProperty(process, "platform", { value: "win32" });
