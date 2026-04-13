@@ -4,6 +4,7 @@ import { createCliToolManager } from "../src/cli/tools/manager.js";
 import {
   createAddToolCommand,
   createRemoveToolCommand,
+  createUpdateToolCommand,
   createToolsCommand,
 } from "../src/cli/commands/tools.js";
 
@@ -14,6 +15,11 @@ const swapEntry: ToolRegistryEntry = {
   name: "swap",
   commandPath: ["swap"],
   description: "Swap tokens",
+};
+
+const updatedSwapEntry: ToolRegistryEntry = {
+  ...swapEntry,
+  packageVersion: "0.2.0",
 };
 
 function createToolManagerMock(overrides: Partial<ReturnType<typeof createCliToolManager>> = {}) {
@@ -29,6 +35,9 @@ function createToolManagerMock(overrides: Partial<ReturnType<typeof createCliToo
     },
     async removeTool() {
       return swapEntry;
+    },
+    async updateTools() {
+      return [];
     },
     async listTools() {
       return [];
@@ -93,6 +102,68 @@ describe("root tool commands", () => {
     await createRemoveToolCommand(toolManager).parseAsync(["node", "remove", "swap"]);
 
     expect(error).toHaveBeenCalledWith("remove failed");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("moneyos update forwards the optional target and --check flag", async () => {
+    const toolManager = createToolManagerMock({
+      updateTools: vi.fn().mockResolvedValue([
+        {
+          current: swapEntry,
+          next: updatedSwapEntry,
+          state: "would-update",
+        },
+      ]),
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await createUpdateToolCommand(toolManager).parseAsync([
+      "node",
+      "update",
+      "swap",
+      "--check",
+    ]);
+
+    expect(toolManager.updateTools).toHaveBeenCalledWith({
+      tool: "swap",
+      check: true,
+    });
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("would-update"),
+    );
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("moneyos update exits 1 when any tool update failed", async () => {
+    const toolManager = createToolManagerMock({
+      updateTools: vi.fn().mockResolvedValue([
+        {
+          current: swapEntry,
+          next: updatedSwapEntry,
+          state: "failed",
+          reason: "registry conflict",
+        },
+      ]),
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await createUpdateToolCommand(toolManager).parseAsync(["node", "update"]);
+
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("registry conflict"),
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("moneyos update reports manager errors without throwing", async () => {
+    const toolManager = createToolManagerMock({
+      updateTools: vi.fn().mockRejectedValue(new Error("npm view failed")),
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await createUpdateToolCommand(toolManager).parseAsync(["node", "update"]);
+
+    expect(error).toHaveBeenCalledWith("npm view failed");
     expect(process.exitCode).toBe(1);
   });
 

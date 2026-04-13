@@ -1,6 +1,14 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Command, CommanderError } from "commander";
@@ -8,7 +16,8 @@ import type { MoneyOSCliContext, MoneyOSCliTool } from "../../cli-tool.js";
 import { getToolHomeDir, getToolHomePackageJsonPath, getToolRegistryPath } from "../config.js";
 import { createMoneyOSCliContext } from "./runtime.js";
 
-const DEFAULT_RESERVED_ROOT_COMMANDS = new Set(["init", "auth", "backup", "balance", "send", "keystore", "add", "remove", "tools", "help", "__session-daemon"]);
+const SUPPORTED_CLI_TOOL_VERSION = 1 as const;
+const DEFAULT_RESERVED_ROOT_COMMANDS = new Set(["init", "auth", "backup", "balance", "send", "keystore", "add", "remove", "update", "tools", "help", "__session-daemon"]);
 const FIRST_PARTY_TOOL_ALIASES: Record<string, string> = { swap: "@moneyos/swap" };
 const VALID_COMMAND_SEGMENT = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 
@@ -24,6 +33,11 @@ export interface ToolRegistryEntry {
 type ToolStatus = ToolRegistryEntry & { state: "ok" | "broken" | "conflict"; problems: string[] };
 type Paths = { rootDir: string; packageJsonPath: string; registryPath: string };
 type LoadedTool = ToolRegistryEntry & { createCommand: MoneyOSCliTool["createCommand"] };
+type LoadedToolSource = {
+  packageName: string;
+  packageVersion: string;
+  cliTool: unknown;
+};
 type SharedToolHomeDependencies = Record<string, string>;
 type RootPackageMetadata = {
   dependencies?: Record<string, string>;
@@ -31,6 +45,36 @@ type RootPackageMetadata = {
     toolHomeDependencies?: Record<string, string>;
   };
 };
+
+export interface ToolUpdateResult {
+  current: ToolRegistryEntry;
+  next?: ToolRegistryEntry;
+  state: "up-to-date" | "would-update" | "updated" | "skipped" | "failed";
+  reason?: string;
+}
+
+class UnsupportedToolContractVersionError extends Error {
+  readonly packageName: string;
+  readonly packageVersion: string;
+  readonly actualVersion: number;
+  readonly expectedVersion: number;
+
+  constructor(
+    packageName: string,
+    packageVersion: string,
+    actualVersion: number,
+    expectedVersion: number = SUPPORTED_CLI_TOOL_VERSION,
+  ) {
+    super(
+      `Package ${packageName}@${packageVersion} exports unsupported moneyosCliTool.version ${actualVersion}. Expected ${expectedVersion}.`,
+    );
+    this.name = "UnsupportedToolContractVersionError";
+    this.packageName = packageName;
+    this.packageVersion = packageVersion;
+    this.actualVersion = actualVersion;
+    this.expectedVersion = expectedVersion;
+  }
+}
 
 const getPaths = (): Paths => ({
   rootDir: getToolHomeDir(),
@@ -119,16 +163,35 @@ function parseRegistryEntry(value: unknown): ToolRegistryEntry {
 function parseLoadedTool(packageName: string, packageVersion: string, value: unknown): LoadedTool {
   if (typeof value !== "object" || value === null) throw new Error(`Package ${packageName} does not export \`moneyosCliTool\`.`);
   const tool = value as Partial<MoneyOSCliTool>;
+  if (tool.version !== SUPPORTED_CLI_TOOL_VERSION) {
+    if (typeof tool.version === "number") {
+      throw new UnsupportedToolContractVersionError(
+        packageName,
+        packageVersion,
+        tool.version,
+      );
+    }
+    throw new Error(
+      `Package ${packageName}@${packageVersion} exports an invalid \`moneyosCliTool\`.`,
+    );
+  }
   if (
-    tool.version !== 1
-    || typeof tool.name !== "string"
+    typeof tool.name !== "string"
     || typeof tool.description !== "string"
     || !Array.isArray(tool.commandPath)
     || tool.commandPath.length === 0
     || tool.commandPath.some((segment) => typeof segment !== "string" || !VALID_COMMAND_SEGMENT.test(segment))
     || typeof tool.createCommand !== "function"
-  ) throw new Error(`Package ${packageName} exports an invalid \`moneyosCliTool\`.`);
-  return { packageName, packageVersion, toolVersion: 1, name: tool.name, commandPath: [...tool.commandPath], description: tool.description, createCommand: tool.createCommand };
+  ) throw new Error(`Package ${packageName}@${packageVersion} exports an invalid \`moneyosCliTool\`.`);
+  return {
+    packageName,
+    packageVersion,
+    toolVersion: SUPPORTED_CLI_TOOL_VERSION,
+    name: tool.name,
+    commandPath: [...tool.commandPath],
+    description: tool.description,
+    createCommand: tool.createCommand,
+  };
 }
 
 function getConflict(entry: ToolRegistryEntry, entries: ToolRegistryEntry[], reservedRootCommands: Set<string>): string | undefined {
@@ -155,7 +218,10 @@ async function runNpm(paths: Paths, args: string[]): Promise<void> {
   });
 }
 
-async function loadInstalledToolFromFs(paths: Paths, packageName: string): Promise<LoadedTool> {
+async function loadInstalledToolFromFsRaw(
+  paths: Paths,
+  packageName: string,
+): Promise<LoadedToolSource> {
   const toolRequire = createRequire(paths.packageJsonPath);
   let entryPath: string;
   try {
@@ -169,21 +235,42 @@ async function loadInstalledToolFromFs(paths: Paths, packageName: string): Promi
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { name?: string; version?: string };
     if (packageJson.name === packageName && typeof packageJson.version === "string") {
       const moduleNamespace = await import(pathToFileURL(entryPath).href);
-      return parseLoadedTool(
-        packageJson.name,
-        packageJson.version,
-        (moduleNamespace as Record<string, unknown>).moneyosCliTool
+      return {
+        packageName: packageJson.name,
+        packageVersion: packageJson.version,
+        cliTool:
+          (moduleNamespace as Record<string, unknown>).moneyosCliTool
           ?? ((moduleNamespace as Record<string, unknown>).default as Record<string, unknown> | undefined)?.moneyosCliTool,
-      );
+      };
     }
   }
   throw new Error(`Could not find package.json for installed package ${packageName}.`);
 }
 
+async function loadInstalledToolFromFs(paths: Paths, packageName: string): Promise<LoadedTool> {
+  const loaded = await loadInstalledToolFromFsRaw(paths, packageName);
+  return parseLoadedTool(loaded.packageName, loaded.packageVersion, loaded.cliTool);
+}
+
+function toRegistryEntry(loaded: LoadedTool): ToolRegistryEntry {
+  return {
+    packageName: loaded.packageName,
+    packageVersion: loaded.packageVersion,
+    toolVersion: loaded.toolVersion,
+    name: loaded.name,
+    commandPath: loaded.commandPath,
+    description: loaded.description,
+  };
+}
+
 export function createCliToolManager(params: {
   paths?: Paths;
-  packageManager?: { install(paths: Paths, spec: string): Promise<void>; uninstall(paths: Paths, packageName: string): Promise<void> };
-  moduleLoader?: (paths: Paths, packageName: string) => Promise<{ packageName: string; packageVersion: string; cliTool: unknown }>;
+  packageManager?: {
+    install(paths: Paths, spec: string): Promise<void>;
+    uninstall(paths: Paths, packageName: string): Promise<void>;
+    inspectLatest?(paths: Paths, packageName: string): Promise<LoadedToolSource>;
+  };
+  moduleLoader?: (paths: Paths, packageName: string) => Promise<LoadedToolSource>;
   cliContext?: MoneyOSCliContext;
   reservedRootCommands?: Iterable<string>;
   sharedToolHomeDependencies?: SharedToolHomeDependencies;
@@ -195,12 +282,46 @@ export function createCliToolManager(params: {
   let reservedRootCommands = new Set(params.reservedRootCommands ?? DEFAULT_RESERVED_ROOT_COMMANDS);
   const install = params.packageManager?.install ?? ((toolPaths: Paths, spec: string) => runNpm(toolPaths, ["install", "--save-exact", "--no-fund", "--no-audit", spec]));
   const uninstall = params.packageManager?.uninstall ?? ((toolPaths: Paths, packageName: string) => runNpm(toolPaths, ["uninstall", "--no-fund", "--no-audit", packageName]));
-  const loadInstalledTool = params.moduleLoader
+  const loadToolFromPaths = params.moduleLoader
     ? async (toolPaths: Paths, packageName: string) => {
         const loaded = await params.moduleLoader!(toolPaths, packageName);
-        return parseLoadedTool(loaded.packageName, loaded.packageVersion, loaded.cliTool);
+        return parseLoadedTool(
+          loaded.packageName,
+          loaded.packageVersion,
+          loaded.cliTool,
+        );
       }
     : loadInstalledToolFromFs;
+  const loadInstalledTool = loadToolFromPaths;
+  const inspectLatest = params.packageManager?.inspectLatest
+    ? async (toolPaths: Paths, packageName: string) => {
+        const loaded = await params.packageManager!.inspectLatest!(
+          toolPaths,
+          packageName,
+        );
+        return parseLoadedTool(loaded.packageName, loaded.packageVersion, loaded.cliTool);
+      }
+    : async (_toolPaths: Paths, packageName: string) => {
+        const rootDir = mkdtempSync(join(tmpdir(), "moneyos-tool-inspect-"));
+        const inspectPaths: Paths = {
+          rootDir,
+          packageJsonPath: join(rootDir, "package.json"),
+          registryPath: join(rootDir, "registry.json"),
+        };
+        try {
+          ensureToolHome(inspectPaths, sharedToolHomeDependencies);
+          await runNpm(inspectPaths, [
+            "install",
+            "--save-exact",
+            "--no-fund",
+            "--no-audit",
+            `${packageName}@latest`,
+          ]);
+          return await loadToolFromPaths(inspectPaths, packageName);
+        } finally {
+          rmSync(rootDir, { recursive: true, force: true });
+        }
+      };
   const sameMetadata = (left: ToolRegistryEntry, right: ToolRegistryEntry) =>
     left.packageName === right.packageName
     && left.packageVersion === right.packageVersion
@@ -341,6 +462,99 @@ export function createCliToolManager(params: {
       }));
       return tools.sort((left, right) => left.commandPath.join(" ").localeCompare(right.commandPath.join(" ")));
     },
+    async updateTools(
+      params: { tool?: string; check?: boolean } = {},
+    ): Promise<ToolUpdateResult[]> {
+      let entries = getRegistryEntries();
+      const targets = params.tool
+        ? (() => {
+            const entry = resolveInstalledTool(params.tool!, entries);
+            if (!entry) throw new Error(`Tool ${params.tool} is not installed.`);
+            return [entry];
+          })()
+        : [...entries].sort((left, right) =>
+            left.commandPath.join(" ").localeCompare(right.commandPath.join(" ")),
+          );
+      const results: ToolUpdateResult[] = [];
+
+      for (const target of targets) {
+        const current =
+          entries.find((entry) => entry.packageName === target.packageName)
+          ?? target;
+
+        let latest: LoadedTool;
+        try {
+          latest = await inspectLatest(paths, current.packageName);
+        } catch (error) {
+          results.push({
+            current,
+            state:
+              error instanceof UnsupportedToolContractVersionError
+                ? "skipped"
+                : "failed",
+            reason: error instanceof Error ? error.message : String(error),
+          });
+          continue;
+        }
+
+        const next = toRegistryEntry(latest);
+        if (next.packageVersion === current.packageVersion) {
+          results.push({ current, next, state: "up-to-date" });
+          continue;
+        }
+
+        const otherEntries = entries.filter(
+          (entry) => entry.packageName !== current.packageName,
+        );
+        const conflict = getConflict(next, otherEntries, reservedRootCommands);
+        if (conflict) {
+          results.push({ current, next, state: "skipped", reason: conflict });
+          continue;
+        }
+
+        if (params.check) {
+          results.push({ current, next, state: "would-update" });
+          continue;
+        }
+
+        try {
+          await install(paths, `${current.packageName}@${next.packageVersion}`);
+          const applied = toRegistryEntry(
+            await loadInstalledTool(paths, current.packageName),
+          );
+          const appliedConflict = getConflict(
+            applied,
+            otherEntries,
+            reservedRootCommands,
+          );
+          if (appliedConflict) throw new Error(appliedConflict);
+          if (applied.packageVersion !== next.packageVersion) {
+            throw new Error(
+              `Installed ${applied.packageName}@${applied.packageVersion}, expected ${next.packageVersion}.`,
+            );
+          }
+          entries = entries.map((entry) =>
+            entry.packageName === current.packageName ? applied : entry,
+          );
+          writeRegistryEntries(entries);
+          results.push({ current, next: applied, state: "updated" });
+        } catch (error) {
+          try {
+            await install(paths, `${current.packageName}@${current.packageVersion}`);
+          } catch {
+            // Best-effort rollback only.
+          }
+          results.push({
+            current,
+            next,
+            state: "failed",
+            reason: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      return results;
+    },
   };
 }
 
@@ -353,6 +567,40 @@ export function formatToolStatusTable(tools: ToolStatus[]): string {
   for (const tool of tools) {
     lines.push(`${tool.commandPath.join(" ").padEnd(commandWidth)}  ${tool.packageName.padEnd(packageWidth)}  ${tool.packageVersion.padEnd(versionWidth)}  ${tool.state}`);
     for (const problem of tool.problems) lines.push(`  ${problem}`);
+  }
+  return lines.join("\n");
+}
+
+export function formatToolUpdateTable(results: ToolUpdateResult[]): string {
+  if (results.length === 0) return "No tool updates to show.";
+  const commandWidth = Math.max(
+    "COMMAND".length,
+    ...results.map((result) =>
+      (result.next?.commandPath ?? result.current.commandPath).join(" ").length,
+    ),
+  );
+  const packageWidth = Math.max(
+    "PACKAGE".length,
+    ...results.map((result) => result.current.packageName.length),
+  );
+  const currentWidth = Math.max(
+    "CURRENT".length,
+    ...results.map((result) => result.current.packageVersion.length),
+  );
+  const latestWidth = Math.max(
+    "LATEST".length,
+    ...results.map((result) => (result.next?.packageVersion ?? "-").length),
+  );
+  const lines = [
+    `${"COMMAND".padEnd(commandWidth)}  ${"PACKAGE".padEnd(packageWidth)}  ${"CURRENT".padEnd(currentWidth)}  ${"LATEST".padEnd(latestWidth)}  STATUS`,
+  ];
+  for (const result of results) {
+    const commandPath = (result.next?.commandPath ?? result.current.commandPath)
+      .join(" ");
+    lines.push(
+      `${commandPath.padEnd(commandWidth)}  ${result.current.packageName.padEnd(packageWidth)}  ${result.current.packageVersion.padEnd(currentWidth)}  ${(result.next?.packageVersion ?? "-").padEnd(latestWidth)}  ${result.state}`,
+    );
+    if (result.reason) lines.push(`  ${result.reason}`);
   }
   return lines.join("\n");
 }

@@ -21,6 +21,9 @@ function createEmptyToolManager(): NonNullable<Parameters<typeof createProgram>[
     async removeTool(): Promise<ToolRegistryEntry> {
       throw new Error("not used");
     },
+    async updateTools() {
+      return [];
+    },
     async listTools() {
       return [];
     },
@@ -33,6 +36,7 @@ describe("root cli surface", () => {
       toolManager: createEmptyToolManager(),
     }).commands.map((command) => command.name());
     expect(commandNames).not.toContain("swap");
+    expect(commandNames).toContain("update");
   });
 
   it("exposes --all on the balance command with an optional token argument", () => {

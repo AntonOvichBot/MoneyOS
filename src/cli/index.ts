@@ -12,6 +12,7 @@ import {
   createAddToolCommand,
   createRemoveToolCommand,
   createToolsCommand,
+  createUpdateToolCommand,
 } from "./commands/tools.js";
 import { runSessionDaemonProcess } from "./session.js";
 import { createCliToolManager } from "./tools/manager.js";
@@ -38,6 +39,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   program.addCommand(backupCommand);
   program.addCommand(createAddToolCommand(toolManager));
   program.addCommand(createRemoveToolCommand(toolManager));
+  program.addCommand(createUpdateToolCommand(toolManager));
   program.addCommand(createToolsCommand(toolManager));
   program
     .command("__session-daemon", { hidden: true })
