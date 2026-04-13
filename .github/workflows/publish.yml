@@ -27,7 +27,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: npm ci
@@ -63,6 +62,12 @@ jobs:
               exit 1
               ;;
           esac
+          VERSION_PART="${REF_NAME##*-v}"
+          if [[ "$VERSION_PART" == *-* ]]; then
+            echo "dist_tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Verify tag matches package version
         env:
@@ -93,4 +98,9 @@ jobs:
 
       - name: Publish package
         working-directory: ${{ steps.target.outputs.package_dir }}
-        run: npm publish --provenance --access public
+        env:
+          DIST_TAG: ${{ steps.target.outputs.dist_tag }}
+        run: |
+          PUBLISH_NPMRC="$RUNNER_TEMP/publish-npmrc"
+          : > "$PUBLISH_NPMRC"
+          NPM_CONFIG_USERCONFIG="$PUBLISH_NPMRC" NODE_AUTH_TOKEN= npm publish --provenance --access public --tag "$DIST_TAG"
