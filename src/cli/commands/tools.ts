@@ -69,7 +69,12 @@ export function createUpdateToolCommand(
           check: options.check === true,
         });
         console.log(formatToolUpdateOutput(results));
-        if (results.some((result) => result.state === "failed")) {
+        if (
+          results.some(
+            (result) =>
+              result.state === "failed" || result.state === "broken",
+          )
+        ) {
           process.exitCode = 1;
         }
       } catch (error) {

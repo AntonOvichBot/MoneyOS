@@ -155,6 +155,26 @@ describe("root tool commands", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it("moneyos update exits 1 when an installed tool is broken", async () => {
+    const toolManager = createToolManagerMock({
+      updateTools: vi.fn().mockResolvedValue([
+        {
+          current: swapEntry,
+          state: "broken",
+          reason: "Installed tool swap is broken: missing compiled entrypoint.",
+        },
+      ]),
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await createUpdateToolCommand(toolManager).parseAsync(["node", "update"]);
+
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("Installed tool swap is broken"),
+    );
+    expect(process.exitCode).toBe(1);
+  });
+
   it("moneyos update reports manager errors without throwing", async () => {
     const toolManager = createToolManagerMock({
       updateTools: vi.fn().mockRejectedValue(new Error("npm view failed")),

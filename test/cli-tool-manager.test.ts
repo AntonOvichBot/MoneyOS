@@ -109,6 +109,7 @@ function createHarness(catalog: Record<string, CatalogRecord>): {
   packageManager: {
     install(paths: ToolHomePaths, spec: string): Promise<void>;
     uninstall(paths: ToolHomePaths, packageName: string): Promise<void>;
+    viewLatestVersion(paths: ToolHomePaths, packageName: string): Promise<string>;
     inspectLatest(paths: ToolHomePaths, packageName: string): Promise<LoadedInstalledTool>;
   };
   moduleLoader: (paths: ToolHomePaths, packageName: string) => Promise<LoadedInstalledTool>;
@@ -156,6 +157,13 @@ function createHarness(catalog: Record<string, CatalogRecord>): {
       delete dependencies[packageName];
       writeDependencies(managerPaths, dependencies);
       installed.delete(packageName);
+    },
+    async viewLatestVersion(_managerPaths, packageName) {
+      const record = catalog[packageName];
+      if (!record) {
+        throw new Error(`Unknown package ${packageName}`);
+      }
+      return record.version;
     },
     async inspectLatest(_managerPaths, packageName) {
       const record = catalog[packageName];
@@ -514,6 +522,43 @@ describe("cli tool manager", () => {
     ]);
   });
 
+  it("moneyos update reports broken installed tools without trying to auto-heal them", async () => {
+    const catalog = {
+      "@moneyos/swap": {
+        version: "0.2.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+        }),
+      },
+    };
+    const harness = registerHarness(catalog);
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager: harness.packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await manager.addTool("swap");
+    harness.installed.delete("@moneyos/swap");
+
+    await expect(manager.updateTools()).resolves.toEqual([
+      expect.objectContaining({
+        current: expect.objectContaining({
+          packageName: "@moneyos/swap",
+        }),
+        state: "broken",
+        reason: expect.stringMatching(/Run `moneyos add @moneyos\/swap` to repair it/i),
+      }),
+    ]);
+    expect(harness.installs).toEqual(["@moneyos/swap"]);
+  });
+
   it("moneyos update rolls back to the previous version when apply validation fails", async () => {
     const catalog = {
       "@moneyos/swap": {
@@ -547,6 +592,7 @@ describe("cli tool manager", () => {
         await harness.packageManager.install(managerPaths, spec);
       },
       uninstall: harness.packageManager.uninstall,
+      viewLatestVersion: harness.packageManager.viewLatestVersion,
       inspectLatest: harness.packageManager.inspectLatest,
     };
 
@@ -589,6 +635,56 @@ describe("cli tool manager", () => {
         packageVersion: "0.1.0",
       }),
     ]);
+  });
+
+  it("moneyos update re-pins shared tool-home dependencies after install drift", async () => {
+    const catalog = {
+      "@moneyos/swap": {
+        version: "0.1.0",
+        cliTool: createFakeCliTool({
+          name: "swap",
+          commandPath: ["swap"],
+        }),
+      },
+    };
+    const harness = registerHarness(catalog);
+    const packageManager = {
+      install: async (managerPaths: ToolHomePaths, spec: string) => {
+        await harness.packageManager.install(managerPaths, spec);
+        const dependencies = readDependencies(managerPaths);
+        dependencies["@moneyos/core"] = "^9.9.9";
+        writeDependencies(managerPaths, dependencies);
+      },
+      uninstall: harness.packageManager.uninstall,
+      viewLatestVersion: harness.packageManager.viewLatestVersion,
+      inspectLatest: harness.packageManager.inspectLatest,
+    };
+
+    const manager = createCliToolManager({
+      paths: harness.paths,
+      packageManager,
+      moduleLoader: harness.moduleLoader,
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await manager.addTool("swap");
+    catalog["@moneyos/swap"].version = "0.2.0";
+
+    await expect(manager.updateTools()).resolves.toEqual([
+      expect.objectContaining({
+        state: "updated",
+      }),
+    ]);
+    expect(readDependencies(harness.paths)).toEqual(
+      expect.objectContaining({
+        "@moneyos/core": "^0.1.0",
+        viem: "^2.45.1",
+        "@moneyos/swap": "0.2.0",
+      }),
+    );
   });
 
   it("re-adding an installed tool refreshes the registry instead of duplicating it", async () => {

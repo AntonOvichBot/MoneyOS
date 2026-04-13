@@ -49,7 +49,7 @@ type RootPackageMetadata = {
 export interface ToolUpdateResult {
   current: ToolRegistryEntry;
   next?: ToolRegistryEntry;
-  state: "up-to-date" | "would-update" | "updated" | "skipped" | "failed";
+  state: "up-to-date" | "would-update" | "updated" | "skipped" | "failed" | "broken";
   reason?: string;
 }
 
@@ -218,6 +218,51 @@ async function runNpm(paths: Paths, args: string[]): Promise<void> {
   });
 }
 
+async function runNpmWithOutput(paths: Paths, args: string[]): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const child = spawn("npm", args, { cwd: paths.rootDir, stdio: "pipe" });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(stdout.trim());
+        return;
+      }
+      reject(
+        new Error(
+          stderr.trim()
+          || stdout.trim()
+          || `npm ${args[0]} failed with exit code ${String(code)}.`,
+        ),
+      );
+    });
+  });
+}
+
+async function viewLatestPackageVersion(
+  paths: Paths,
+  packageName: string,
+): Promise<string> {
+  const stdout = await runNpmWithOutput(paths, [
+    "view",
+    packageName,
+    "version",
+    "--json",
+  ]);
+  const parsed = JSON.parse(stdout) as unknown;
+  if (typeof parsed !== "string" || parsed.length === 0) {
+    throw new Error(`npm view ${packageName} returned an invalid version.`);
+  }
+  return parsed;
+}
+
 async function loadInstalledToolFromFsRaw(
   paths: Paths,
   packageName: string,
@@ -263,11 +308,20 @@ function toRegistryEntry(loaded: LoadedTool): ToolRegistryEntry {
   };
 }
 
+function formatBrokenInstalledToolMessage(
+  entry: ToolRegistryEntry,
+  error: unknown,
+): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return `Installed tool ${entry.commandPath.join(" ")} is broken: ${message}. Run \`moneyos add ${entry.packageName}\` to repair it or \`moneyos remove ${entry.packageName}\` to uninstall it.`;
+}
+
 export function createCliToolManager(params: {
   paths?: Paths;
   packageManager?: {
     install(paths: Paths, spec: string): Promise<void>;
     uninstall(paths: Paths, packageName: string): Promise<void>;
+    viewLatestVersion?(paths: Paths, packageName: string): Promise<string>;
     inspectLatest?(paths: Paths, packageName: string): Promise<LoadedToolSource>;
   };
   moduleLoader?: (paths: Paths, packageName: string) => Promise<LoadedToolSource>;
@@ -280,8 +334,10 @@ export function createCliToolManager(params: {
   const sharedToolHomeDependencies = params.sharedToolHomeDependencies ?? getSharedToolHomeDependencies();
   const sharedToolHomeDependencyNames = new Set(Object.keys(sharedToolHomeDependencies));
   let reservedRootCommands = new Set(params.reservedRootCommands ?? DEFAULT_RESERVED_ROOT_COMMANDS);
-  const install = params.packageManager?.install ?? ((toolPaths: Paths, spec: string) => runNpm(toolPaths, ["install", "--save-exact", "--no-fund", "--no-audit", spec]));
-  const uninstall = params.packageManager?.uninstall ?? ((toolPaths: Paths, packageName: string) => runNpm(toolPaths, ["uninstall", "--no-fund", "--no-audit", packageName]));
+  const rawInstall = params.packageManager?.install ?? ((toolPaths: Paths, spec: string) => runNpm(toolPaths, ["install", "--save-exact", "--no-fund", "--no-audit", spec]));
+  const rawUninstall = params.packageManager?.uninstall ?? ((toolPaths: Paths, packageName: string) => runNpm(toolPaths, ["uninstall", "--no-fund", "--no-audit", packageName]));
+  const viewLatestVersion = params.packageManager?.viewLatestVersion
+    ?? viewLatestPackageVersion;
   const loadToolFromPaths = params.moduleLoader
     ? async (toolPaths: Paths, packageName: string) => {
         const loaded = await params.moduleLoader!(toolPaths, packageName);
@@ -322,6 +378,17 @@ export function createCliToolManager(params: {
           rmSync(rootDir, { recursive: true, force: true });
         }
       };
+  const install = async (toolPaths: Paths, spec: string): Promise<void> => {
+    await rawInstall(toolPaths, spec);
+    ensureToolHome(toolPaths, sharedToolHomeDependencies);
+  };
+  const uninstall = async (
+    toolPaths: Paths,
+    packageName: string,
+  ): Promise<void> => {
+    await rawUninstall(toolPaths, packageName);
+    ensureToolHome(toolPaths, sharedToolHomeDependencies);
+  };
   const sameMetadata = (left: ToolRegistryEntry, right: ToolRegistryEntry) =>
     left.packageName === right.packageName
     && left.packageVersion === right.packageVersion
@@ -359,8 +426,7 @@ export function createCliToolManager(params: {
       }
       command.exitOverride();
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Installed tool ${entry.commandPath.join(" ")} is broken: ${message}. Run \`moneyos add ${entry.packageName}\` to repair it or \`moneyos remove ${entry.packageName}\` to uninstall it.`);
+      throw new Error(formatBrokenInstalledToolMessage(entry, error));
     }
 
     try {
@@ -481,6 +547,35 @@ export function createCliToolManager(params: {
         const current =
           entries.find((entry) => entry.packageName === target.packageName)
           ?? target;
+        try {
+          const installed = await loadInstalledTool(paths, current.packageName);
+          if (!sameMetadata(current, installed)) {
+            throw new Error("installed metadata does not match registry");
+          }
+        } catch (error) {
+          results.push({
+            current,
+            state: "broken",
+            reason: formatBrokenInstalledToolMessage(current, error),
+          });
+          continue;
+        }
+
+        let latestVersion: string;
+        try {
+          latestVersion = await viewLatestVersion(paths, current.packageName);
+        } catch (error) {
+          results.push({
+            current,
+            state: "failed",
+            reason: error instanceof Error ? error.message : String(error),
+          });
+          continue;
+        }
+        if (latestVersion === current.packageVersion) {
+          results.push({ current, next: current, state: "up-to-date" });
+          continue;
+        }
 
         let latest: LoadedTool;
         try {
@@ -498,11 +593,6 @@ export function createCliToolManager(params: {
         }
 
         const next = toRegistryEntry(latest);
-        if (next.packageVersion === current.packageVersion) {
-          results.push({ current, next, state: "up-to-date" });
-          continue;
-        }
-
         const otherEntries = entries.filter(
           (entry) => entry.packageName !== current.packageName,
         );

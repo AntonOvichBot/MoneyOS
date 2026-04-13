@@ -162,11 +162,18 @@ describe("cli tool manager default npm wrappers", () => {
     );
 
     mockSpawn.mockImplementation((command: string, args: string[], options: { cwd?: string; stdio?: string }) => {
-      const child = new EventEmitter() as EventEmitter & { stderr: EventEmitter };
+      const child = new EventEmitter() as EventEmitter & {
+        stderr: EventEmitter;
+        stdout: EventEmitter;
+      };
       child.stderr = new EventEmitter();
+      child.stdout = new EventEmitter();
 
       queueMicrotask(() => {
         child.stderr.emit("data", "npm notice staged update check");
+        if (args[0] === "view") {
+          child.stdout.emit("data", "\"0.2.0\"");
+        }
         if (args[0] === "install" && args[4] === "@moneyos/swap@latest") {
           const packageJsonPath = join(options.cwd!, "package.json");
           const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
@@ -219,15 +226,25 @@ describe("cli tool manager default npm wrappers", () => {
       }),
     ]);
 
-    expect(mockSpawn).toHaveBeenCalledOnce();
-    expect(mockSpawn).toHaveBeenCalledWith(
+    expect(mockSpawn).toHaveBeenCalledTimes(2);
+    expect(mockSpawn).toHaveBeenNthCalledWith(
+      1,
+      "npm",
+      ["view", "@moneyos/swap", "version", "--json"],
+      expect.objectContaining({
+        cwd: rootDir,
+        stdio: "pipe",
+      }),
+    );
+    expect(mockSpawn).toHaveBeenNthCalledWith(
+      2,
       "npm",
       ["install", "--save-exact", "--no-fund", "--no-audit", "@moneyos/swap@latest"],
       expect.objectContaining({
         stdio: "pipe",
       }),
     );
-    expect((mockSpawn.mock.calls[0] as [string, string[], { cwd?: string }])[2].cwd).not.toBe(rootDir);
+    expect((mockSpawn.mock.calls[1] as [string, string[], { cwd?: string }])[2].cwd).not.toBe(rootDir);
     expect(
       (
         JSON.parse(readFileSync(paths.packageJsonPath, "utf8")) as {
@@ -235,5 +252,91 @@ describe("cli tool manager default npm wrappers", () => {
         }
       ).dependencies?.["@moneyos/swap"],
     ).toBe("0.1.0");
+  });
+
+  it("does not stage an install when npm view reports the installed version is current", async () => {
+    writeFileSync(
+      paths.packageJsonPath,
+      `${JSON.stringify(
+        {
+          name: "moneyos-tools",
+          private: true,
+          dependencies: {
+            "@moneyos/core": "^0.1.0",
+            viem: "^2.45.1",
+            "@moneyos/swap": "0.1.0",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    writeFileSync(
+      paths.registryPath,
+      `${JSON.stringify(
+        [
+          {
+            packageName: "@moneyos/swap",
+            packageVersion: "0.1.0",
+            toolVersion: 1,
+            name: "swap",
+            commandPath: ["swap"],
+            description: "Swap tokens",
+          },
+        ],
+        null,
+        2,
+      )}\n`,
+    );
+
+    mockSpawn.mockImplementation((command: string, args: string[], options: { cwd?: string; stdio?: string }) => {
+      const child = new EventEmitter() as EventEmitter & {
+        stderr: EventEmitter;
+        stdout: EventEmitter;
+      };
+      child.stderr = new EventEmitter();
+      child.stdout = new EventEmitter();
+
+      queueMicrotask(() => {
+        child.stdout.emit("data", "\"0.1.0\"");
+        child.emit("close", 0);
+      });
+
+      expect(command).toBe("npm");
+      expect(args).toEqual(["view", "@moneyos/swap", "version", "--json"]);
+      expect(options).toMatchObject({
+        cwd: rootDir,
+        stdio: "pipe",
+      });
+      return child;
+    });
+
+    const manager = createCliToolManager({
+      paths,
+      moduleLoader: async () => ({
+        packageName: "@moneyos/swap",
+        packageVersion: "0.1.0",
+        cliTool: {
+          version: 1,
+          name: "swap",
+          commandPath: ["swap"],
+          description: "Swap tokens",
+          createCommand(ctx: { Command: typeof Command }) {
+            return new ctx.Command("swap");
+          },
+        },
+      }),
+      cliContext: {
+        Command,
+        getRuntime: vi.fn(),
+      },
+    });
+
+    await expect(manager.updateTools({ check: true })).resolves.toEqual([
+      expect.objectContaining({
+        state: "up-to-date",
+      }),
+    ]);
+    expect(mockSpawn).toHaveBeenCalledOnce();
   });
 });
