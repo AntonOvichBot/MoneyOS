@@ -1,6 +1,6 @@
 {
   "name": "moneyos",
-  "version": "0.5.0",
+  "version": "0.5.1-rc.0",
   "description": "The operating system for money. Programmable money primitives for developers and AI agents.",
   "type": "module",
   "main": "dist/index.js",

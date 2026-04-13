@@ -2,6 +2,19 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## 0.5.1-rc.0 - 2026-04-13
+
+### Changed
+
+- root release publishing now runs from a tag-triggered GitHub Actions workflow
+  that verifies tag-to-version alignment, reruns lint/typecheck/tests, verifies
+  packed tarballs, and publishes with npm Trusted Publishing plus provenance
+- root release package metadata now uses the canonical `1231CheGites/MoneyOS`
+  GitHub URL casing for repository links and provenance alignment
+- `CONTRIBUTING.md` now documents the forward release tag convention:
+  `moneyos-v<version>` for root releases and `moneyos-<package>-v<version>` for
+  workspace packages, with bare `v<version>` retained only for historical tags
+
 ## 0.5.0 - 2026-04-12
 
 ### Added
