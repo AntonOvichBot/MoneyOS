@@ -64,11 +64,6 @@ jobs:
               ;;
           esac
 
-      - name: Verify npm auth
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm whoami
-
       - name: Verify tag matches package version
         env:
           PACKAGE_DIR: ${{ steps.target.outputs.package_dir }}
@@ -98,6 +93,4 @@ jobs:
 
       - name: Publish package
         working-directory: ${{ steps.target.outputs.package_dir }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance --access public
