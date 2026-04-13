@@ -13,12 +13,21 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
+      - name: Check release PR shape
+        if: github.event_name == 'pull_request'
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-release-pr-shape.mjs
 
       - name: Install dependencies
         run: npm ci

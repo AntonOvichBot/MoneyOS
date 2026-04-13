@@ -136,6 +136,19 @@ Before cutting a release:
 - do not chain `-rc.N` tags to iterate on CI; use a draft PR or
   `workflow_dispatch` instead
 
+Release discipline is enforced mechanically, not trusted:
+
+- any PR that bumps a `package.json` version is checked by CI and rejected if
+  it touches anything outside `package.json`, `CHANGELOG.md`,
+  `package-lock.json`, or their workspace equivalents
+  (`scripts/check-release-pr-shape.mjs`)
+- any PR that bumps a version is rejected if the matching `CHANGELOG.md` does
+  not contain an entry for the new version
+- the publish workflow refuses to publish a tag that is not reachable from
+  `origin/main`
+- the publish workflow refuses to publish a tag whose version does not match
+  the target `package.json`
+
 ## Rules
 
 - no root-level tool-specific logic
