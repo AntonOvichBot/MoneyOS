@@ -152,6 +152,7 @@ describe("local auth session", () => {
 
       const status = await getSessionStatus(socketPath, tokenPath);
       expect(status?.address).toBe(TEST_ADDRESS);
+      expect(status?.mode).toBe("eoa");
 
       const locked = await lockSession(socketPath, tokenPath);
       expect(locked).toBe(true);
@@ -180,6 +181,32 @@ describe("local auth session", () => {
     const status = await getSessionStatus(socketPath, tokenPath);
     expect(status).toBeUndefined();
     rmSync(baseDir, { recursive: true, force: true });
+  });
+
+  it("reports smart-account mode when started in gasless mode", async () => {
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("gasless-status");
+    const handle = await startSessionServer({
+      type: "start",
+      privateKey: TEST_PK,
+      chainId: 42161,
+      socketPath,
+      tokenPath,
+      ttlMs: 5000,
+      gasless: {
+        account: "0x1111111111111111111111111111111111111111",
+        sponsor: "0x2222222222222222222222222222222222222222",
+        relayUrl: "https://relay.moneyos.local",
+      },
+    });
+
+    try {
+      expect(handle.mode).toBe("smart-account");
+      const status = await getSessionStatus(socketPath, tokenPath);
+      expect(status?.mode).toBe("smart-account");
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
   });
 
   it("keeps a slow send request alive long enough to return the executor result", async () => {

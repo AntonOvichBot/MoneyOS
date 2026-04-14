@@ -27,5 +27,6 @@ export async function connectLocalSession(
     socketPath,
     tokenPath,
     address: session.address,
+    mode: session.mode,
   });
 }

@@ -37,6 +37,7 @@ describe("root cli surface", () => {
     }).commands.map((command) => command.name());
     expect(commandNames).not.toContain("swap");
     expect(commandNames).toContain("update");
+    expect(commandNames).toContain("gasless");
   });
 
   it("exposes --all on the balance command with an optional token argument", () => {

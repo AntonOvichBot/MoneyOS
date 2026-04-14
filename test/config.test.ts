@@ -23,6 +23,7 @@ describe("loadConfig env vars", () => {
     "MONEYOS_PRIVATE_KEY",
     "MONEYOS_RPC_URL",
     "MONEYOS_CHAIN_ID",
+    "MONEYOS_GASLESS_ENABLED",
   ];
   const saved: Record<string, string | undefined> = {};
 
@@ -67,6 +68,21 @@ describe("loadConfig env vars", () => {
     process.env.MONEYOS_CHAIN_ID = "abc";
     expect(() => loadConfig()).toThrow('Invalid MONEYOS_CHAIN_ID: "abc"');
   });
+
+  it("MONEYOS_GASLESS_ENABLED accepts boolean-ish values", () => {
+    process.env.MONEYOS_GASLESS_ENABLED = "true";
+    const enabled = loadConfig();
+    expect(enabled.gasless?.enabled).toBe(true);
+
+    process.env.MONEYOS_GASLESS_ENABLED = "0";
+    const disabled = loadConfig();
+    expect(disabled.gasless?.enabled).toBe(false);
+  });
+
+  it("MONEYOS_GASLESS_ENABLED rejects invalid values", () => {
+    process.env.MONEYOS_GASLESS_ENABLED = "maybe";
+    expect(() => loadConfig()).toThrow('Invalid MONEYOS_GASLESS_ENABLED: "maybe"');
+  });
 });
 
 describe("CLIConfig file schema", () => {
@@ -88,6 +104,9 @@ describe("CLIConfig file schema", () => {
       rpcUrl: "https://arb1.arbitrum.io/rpc",
       walletPath: join(tmpDir, "wallet.json"),
       backupDir: join(tmpDir, "backups"),
+      gasless: {
+        enabled: true,
+      },
     };
     saveConfig(config, configPath);
 
