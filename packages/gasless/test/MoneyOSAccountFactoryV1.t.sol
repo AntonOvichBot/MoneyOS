@@ -9,6 +9,7 @@ interface Vm {
     function addr(uint256 privateKey) external returns (address);
     function sign(uint256 privateKey, bytes32 digest) external returns (uint8 v, bytes32 r, bytes32 s);
     function prank(address newSender) external;
+    function deal(address account, uint256 newBalance) external;
 }
 
 address constant HEVM_ADDRESS = address(uint160(uint256(keccak256("hevm cheat code"))));
@@ -63,6 +64,7 @@ contract MoneyOSAccountFactoryV1Test {
     function setUp() public {
         owner = vm.addr(OWNER_PK);
         sponsor = address(0xBEEF);
+        vm.deal(sponsor, 1 ether);
 
         factory = new MoneyOSAccountFactoryV1();
         hashHarness = new IntentHashHarnessForFactory();
