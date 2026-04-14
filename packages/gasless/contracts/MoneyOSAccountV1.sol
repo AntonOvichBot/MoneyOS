@@ -186,7 +186,7 @@ contract MoneyOSAccountV1 {
 
     function isValidSignature(bytes32 hash, bytes calldata signature) external view returns (bytes4) {
         address signer = ECDSA.recover(hash, signature);
-        if (_isSignerActive(signer)) {
+        if (signer == owner) {
             return ERC1271_MAGICVALUE;
         }
 

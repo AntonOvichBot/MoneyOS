@@ -10,6 +10,8 @@ interface Vm {
     function sign(uint256 privateKey, bytes32 digest) external returns (uint8 v, bytes32 r, bytes32 s);
     function prank(address newSender) external;
     function expectRevert(bytes4) external;
+    function expectRevert(bytes calldata) external;
+    function warp(uint256) external;
 }
 
 address constant HEVM_ADDRESS = address(uint160(uint256(keccak256("hevm cheat code"))));
@@ -135,9 +137,166 @@ contract MoneyOSAccountV1Test {
 
         bytes memory signature = _signIntent(AUTH_PK, intent);
 
-        vm.expectRevert(MoneyOSAccountV1.CallTargetNotAllowed.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MoneyOSAccountV1.CallTargetNotAllowed.selector,
+                authorized,
+                address(0x1234)
+            )
+        );
         vm.prank(sponsor);
         account.execute(intent, signature);
+    }
+
+    function testErc1271OwnerOnlyEvenWhenAuthorizedKeyIsActive() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(receiver);
+
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = bytes4(0);
+
+        vm.prank(owner);
+        account.setAuthorizedKey(
+            authorized,
+            true,
+            uint96(0.2 ether),
+            uint48(block.timestamp),
+            uint48(block.timestamp + 1 days),
+            targets,
+            selectors
+        );
+
+        bytes32 digest = keccak256("erc1271-owner-only");
+        bytes memory ownerSignature = _signDigest(OWNER_PK, digest);
+        bytes memory authorizedSignature = _signDigest(AUTH_PK, digest);
+
+        require(account.isValidSignature(digest, ownerSignature) == 0x1626ba7e, "owner must pass erc1271");
+        require(account.isValidSignature(digest, authorizedSignature) == 0xffffffff, "authorized key must fail erc1271");
+    }
+
+    function testAuthorizedKeyValueCapIsEnforced() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(receiver);
+
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = bytes4(0);
+
+        vm.prank(owner);
+        account.setAuthorizedKey(
+            authorized,
+            true,
+            uint96(0.01 ether),
+            uint48(block.timestamp),
+            uint48(block.timestamp + 1 days),
+            targets,
+            selectors
+        );
+
+        IIntentTypesV1.IntentV1 memory intent = _singleCallIntent(
+            address(receiver),
+            0.02 ether,
+            "",
+            0,
+            sponsor
+        );
+
+        bytes memory signature = _signIntent(AUTH_PK, intent);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MoneyOSAccountV1.CallValueExceedsScope.selector,
+                authorized,
+                0.02 ether,
+                0.01 ether
+            )
+        );
+        vm.prank(sponsor);
+        account.execute(intent, signature);
+    }
+
+    function testAuthorizedKeyWindowIsEnforced() public {
+        address[] memory targets = new address[](1);
+        targets[0] = address(receiver);
+
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = bytes4(0);
+
+        uint48 keyValidAfter = uint48(block.timestamp + 100);
+        uint48 keyValidUntil = uint48(block.timestamp + 200);
+
+        vm.prank(owner);
+        account.setAuthorizedKey(
+            authorized,
+            true,
+            uint96(0.2 ether),
+            keyValidAfter,
+            keyValidUntil,
+            targets,
+            selectors
+        );
+
+        IIntentTypesV1.IntentV1 memory earlyIntent = _singleCallIntent(
+            address(receiver),
+            0.01 ether,
+            "",
+            0,
+            sponsor
+        );
+
+        bytes memory earlySignature = _signIntent(AUTH_PK, earlyIntent);
+
+        vm.expectRevert(MoneyOSAccountV1.Unauthorized.selector);
+        vm.prank(sponsor);
+        account.execute(earlyIntent, earlySignature);
+
+        vm.warp(uint256(keyValidAfter) + 1);
+
+        IIntentTypesV1.IntentV1 memory inWindowIntent = _singleCallIntent(
+            address(receiver),
+            0.01 ether,
+            "",
+            0,
+            sponsor
+        );
+
+        bytes memory inWindowSignature = _signIntent(AUTH_PK, inWindowIntent);
+
+        vm.prank(sponsor);
+        account.execute(inWindowIntent, inWindowSignature);
+
+        require(account.getNonce(authorized, 0) == 1, "authorized nonce lane should increment in-window");
+
+        vm.warp(uint256(keyValidUntil) + 1);
+
+        IIntentTypesV1.IntentV1 memory expiredIntent = _singleCallIntent(
+            address(receiver),
+            0.01 ether,
+            "",
+            1,
+            sponsor
+        );
+
+        bytes memory expiredSignature = _signIntent(AUTH_PK, expiredIntent);
+
+        vm.expectRevert(MoneyOSAccountV1.Unauthorized.selector);
+        vm.prank(sponsor);
+        account.execute(expiredIntent, expiredSignature);
+    }
+
+    function testExecuteForSponsorRejectsNonDeployerCaller() public {
+        IIntentTypesV1.IntentV1 memory intent = _singleCallIntent(
+            address(receiver),
+            0.01 ether,
+            "",
+            0,
+            sponsor
+        );
+
+        bytes memory signature = _signIntent(OWNER_PK, intent);
+
+        vm.expectRevert(MoneyOSAccountV1.Unauthorized.selector);
+        vm.prank(sponsor);
+        account.executeForSponsor(intent, signature, sponsor);
     }
 
     function testReplayRejectedOnSameSignerNonceTuple() public {
@@ -153,7 +312,7 @@ contract MoneyOSAccountV1Test {
         vm.prank(sponsor);
         account.execute(intent, signature);
 
-        vm.expectRevert(MoneyOSAccountV1.NonceMismatch.selector);
+        vm.expectRevert(abi.encodeWithSelector(MoneyOSAccountV1.NonceMismatch.selector, uint64(1), uint64(0)));
         vm.prank(sponsor);
         account.execute(intent, signature);
     }
@@ -198,6 +357,13 @@ contract MoneyOSAccountV1Test {
         returns (bytes memory signature)
     {
         bytes32 digest = hashHarness.hash(intent, block.chainid, address(account));
+        return _signDigest(privateKey, digest);
+    }
+
+    function _signDigest(uint256 privateKey, bytes32 digest)
+        internal
+        returns (bytes memory signature)
+    {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
         signature = abi.encodePacked(r, s, v);
     }
