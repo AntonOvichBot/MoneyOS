@@ -45,8 +45,15 @@ async function runGaslessToggle(enabled: boolean): Promise<void> {
     const defaults = config.chainId
       ? getGaslessNetworkDefaults(config.chainId)
       : undefined;
+    const enabledConfig = {
+      ...config,
+      gasless: {
+        ...config.gasless,
+        enabled: true,
+      },
+    };
     const derived = ownerAddress
-      ? await resolveGaslessExecutionConfig(config, {
+      ? await resolveGaslessExecutionConfig(enabledConfig, {
           ownerAddress,
           chainId: config.chainId,
           rpcUrl: config.rpcUrl ?? defaults?.rpcUrl,
