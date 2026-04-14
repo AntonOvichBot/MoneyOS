@@ -91,6 +91,16 @@ function resolvePolicyPath(explicit: string | undefined): string {
   return candidates[0]!;
 }
 
+function defaultSqlitePath(): string {
+  if (process.platform === "darwin") {
+    return path.join(process.env.HOME ?? process.cwd(), "Library", "Application Support", "MoneyOS Relay", "relay.sqlite");
+  }
+  if (process.platform === "linux") {
+    return "/var/lib/moneyos-relay/relay.sqlite";
+  }
+  return path.resolve(process.cwd(), "data/relay.sqlite");
+}
+
 export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
   const sponsorPrivateKey =
     (env.MONEYOS_RELAY_SPONSOR_PRIVATE_KEY as `0x${string}` | undefined) ??
@@ -106,7 +116,7 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     logLevel: env.MONEYOS_RELAY_LOG_LEVEL?.trim() || "info",
     rpcUrl: env.MONEYOS_RELAY_RPC_URL?.trim() || "http://127.0.0.1:8545",
     chainId: parseNumber("MONEYOS_RELAY_CHAIN_ID", env.MONEYOS_RELAY_CHAIN_ID, 42161),
-    sqlitePath: env.MONEYOS_RELAY_DB_PATH?.trim() || path.resolve(process.cwd(), "data/relay.sqlite"),
+    sqlitePath: env.MONEYOS_RELAY_DB_PATH?.trim() || defaultSqlitePath(),
     policyPath: resolvePolicyPath(env.MONEYOS_RELAY_POLICY_PATH?.trim()),
     sponsorPrivateKey,
     relayAddress,

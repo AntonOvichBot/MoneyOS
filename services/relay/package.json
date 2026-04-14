@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsup", 
+    "build": "tsup",
     "start": "npm run build && node dist/server.js",
+    "start:node": "node dist/server.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

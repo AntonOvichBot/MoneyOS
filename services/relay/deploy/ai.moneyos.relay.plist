@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "https://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>ai.moneyos.relay</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/macmini/.openclaw/workspace/projects/moneyos-repo</string>
+
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/bin/env</string>
+      <string>bash</string>
+      <string>-lc</string>
+      <string>source ~/.config/moneyos-relay.env &amp;&amp; npm run start:node --workspace=services/relay</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/macmini/Library/Logs/moneyos-relay.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/macmini/Library/Logs/moneyos-relay.err.log</string>
+  </dict>
+</plist>

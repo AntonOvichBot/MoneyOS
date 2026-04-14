@@ -1,18 +1,33 @@
-# MoneyOS Relay Deployment (single VPS)
+# MoneyOS Relay Deployment
 
-## Local run
+Issue #82 is local-first for v1. The first real host is Jack's always-on Mac mini. Cloud migration can wait until a real external user depends on the relay or home-hosting becomes operationally annoying.
+
+## Prereqs
+
+- Node 22
+- npm
+- Docker Desktop if you want the container path
+- Run this once after install or Node upgrades on local machines:
+
+```bash
+npm rebuild better-sqlite3 --workspace=services/relay
+```
+
+## Direct node run (recommended for Mac mini)
 
 ```bash
 npm ci
+npm rebuild better-sqlite3 --workspace=services/relay
 npm run build --workspace=packages/gasless
-npm run start --workspace=services/relay
+npm run build --workspace=services/relay
+npm run start:node --workspace=services/relay
 ```
 
 Default endpoint: `http://127.0.0.1:8787`
 
 ## Required environment
 
-Set these in shell or `/etc/moneyos/relay.env`:
+Set these in shell or an env file you source before launch.
 
 ```bash
 MONEYOS_RELAY_RPC_URL=https://arb-mainnet.example
@@ -37,7 +52,41 @@ MONEYOS_RELAY_PER_TX_MAX_GAS_WEI=800000000000000
 MONEYOS_RELAY_CONFIRM_POLL_MS=5000
 ```
 
-## systemd install
+Default `MONEYOS_RELAY_DB_PATH` by platform:
+
+- Linux production: `/var/lib/moneyos-relay/relay.sqlite`
+- macOS local host: `~/Library/Application Support/MoneyOS Relay/relay.sqlite`
+- other/dev fallback: `services/relay/data/relay.sqlite`
+
+## launchd install (macOS / Mac mini)
+
+Create an env file such as `~/.config/moneyos-relay.env`:
+
+```bash
+export MONEYOS_RELAY_RPC_URL=https://arb-mainnet.example
+export MONEYOS_RELAY_SPONSOR_PRIVATE_KEY=0x...
+export MONEYOS_RELAY_ADDRESS=0x...
+export MONEYOS_RELAY_DB_PATH="$HOME/Library/Application Support/MoneyOS Relay/relay.sqlite"
+```
+
+Then install the plist:
+
+```bash
+mkdir -p "$HOME/Library/Application Support/MoneyOS Relay"
+mkdir -p "$HOME/.config"
+cp services/relay/deploy/ai.moneyos.relay.plist "$HOME/Library/LaunchAgents/ai.moneyos.relay.plist"
+launchctl unload "$HOME/Library/LaunchAgents/ai.moneyos.relay.plist" 2>/dev/null || true
+launchctl load "$HOME/Library/LaunchAgents/ai.moneyos.relay.plist"
+launchctl kickstart -k gui/$(id -u)/ai.moneyos.relay
+launchctl print gui/$(id -u)/ai.moneyos.relay
+```
+
+Logs:
+
+- `~/Library/Logs/moneyos-relay.log`
+- `~/Library/Logs/moneyos-relay.err.log`
+
+## systemd install (Linux / later VPS)
 
 ```bash
 sudo install -D -m 0644 services/relay/deploy/moneyos-relay.service /etc/systemd/system/moneyos-relay.service
@@ -49,7 +98,21 @@ sudo systemctl status moneyos-relay
 
 ## Docker
 
+Docker is optional for v1 local hosting. On macOS this means Docker Desktop.
+
 ```bash
 docker build -f services/relay/deploy/Dockerfile -t moneyos-relay:local .
 docker run --rm -p 8787:8787 --env-file /etc/moneyos/relay.env moneyos-relay:local
 ```
+
+## Home-network edge checklist
+
+If the relay is reachable from outside your home network, document and choose the boring edge path:
+
+- domain or subdomain name
+- DNS or DDNS
+- TLS termination path
+- direct port-forward vs Cloudflare Tunnel
+- how you will rotate the relay off the Mac mini later without breaking the public endpoint
+
+For v1, Cloudflare Tunnel is usually the cleaner choice than raw port-forwarding.
