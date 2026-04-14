@@ -192,6 +192,12 @@ Operational posture:
 ### Capability reporting
 - `GET /v1/capabilities` should expose active policy version and supported flow shapes
 
+### User bootstrap reality
+- v1 is gasless execution, not gasless onboarding
+- the relay sponsors gas only, not transfer value
+- a new user must fund the smart account with actual assets first before gasless send or swap can succeed
+- launch messaging and docs must say this plainly instead of implying empty-wallet onboarding
+
 ## 9. Golden test vectors required before merge-worthy implementation
 
 At minimum, create golden vectors for:

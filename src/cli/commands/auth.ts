@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { privateKeyToAccount } from "viem/accounts";
 import {
   FileEncryptedWalletStore,
   type EncryptedWalletStore,
@@ -149,7 +150,12 @@ authCommand
       }
 
       const privateKey = await wallet.decrypt(passphrase);
-      const gasless = resolveGaslessExecutionConfig(config);
+      const ownerAddress = privateKeyToAccount(privateKey).address;
+      const gasless = await resolveGaslessExecutionConfig(config, {
+        ownerAddress,
+        chainId: config.chainId ?? 42161,
+        rpcUrl: config.rpcUrl,
+      });
       const status = await startDetachedSessionDaemon({
         type: "start",
         privateKey,

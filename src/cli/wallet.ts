@@ -14,7 +14,7 @@ import {
   type CLIConfig,
 } from "./config.js";
 import { connectLocalSession } from "../local-session.js";
-import { resolveGaslessExecutionConfig } from "./gasless.js";
+import { isGaslessEnabled, resolveGaslessExecutionConfig } from "./gasless.js";
 
 export type CliWalletBackendKind = "env" | "wallet-file" | "session";
 
@@ -109,12 +109,22 @@ export async function buildCliMoneyOSConfig(
     return moneyosConfig;
   }
 
-  const gasless = resolveGaslessExecutionConfig(config);
+  const gaslessEnabled = isGaslessEnabled(config);
 
   const envPrivateKey = resolveEnvPrivateKey(options.envPrivateKey);
   if (envPrivateKey) {
     const signer = privateKeyToManagedAccount(envPrivateKey);
+    const gasless = await resolveGaslessExecutionConfig(config, {
+      ownerAddress: signer.address,
+      chainId: moneyosConfig.chainId,
+      rpcUrl: moneyosConfig.rpcUrl,
+    });
     if (!gasless) {
+      if (gaslessEnabled) {
+        throw new Error(
+          "Gasless mode is enabled but required environment variables are missing. Set MONEYOS_GASLESS_RELAY_URL, MONEYOS_GASLESS_ACCOUNT, and MONEYOS_GASLESS_SPONSOR.",
+        );
+      }
       return {
         ...moneyosConfig,
         signer,
@@ -144,13 +154,13 @@ export async function buildCliMoneyOSConfig(
       tokenPath,
     });
 
-    if (gasless && sessionExecute.mode !== "smart-account") {
+    if (gaslessEnabled && sessionExecute.mode !== "smart-account") {
       throw new Error(
         "Gasless mode is enabled, but the active wallet session is still using the EOA executor. Run `moneyos auth unlock` again.",
       );
     }
 
-    if (!gasless && sessionExecute.mode === "smart-account") {
+    if (!gaslessEnabled && sessionExecute.mode === "smart-account") {
       throw new Error(
         "Gasless mode is disabled, but the active wallet session is still gasless. Run `moneyos auth unlock` again.",
       );

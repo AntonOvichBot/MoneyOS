@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import { getGaslessNetworkDefaults } from "@moneyos/gasless";
 import {
   getConfigPath,
   getSessionSocketPath,
@@ -10,8 +11,10 @@ import {
   gaslessEnvVarNames,
   getGaslessRequiredEnvPresence,
   isGaslessEnabled,
+  resolveGaslessExecutionConfig,
 } from "../gasless.js";
 import { lockSession } from "../session.js";
+import { loadCliAddress } from "../wallet.js";
 
 function formatEnabled(enabled: boolean): string {
   return enabled ? "enabled" : "disabled";
@@ -32,32 +35,54 @@ async function refreshSessionAfterToggle(): Promise<void> {
 async function runGaslessToggle(enabled: boolean): Promise<void> {
   const config = loadFileConfig();
   const previous = config.gasless?.enabled === true;
+  let nextGasless = {
+    ...config.gasless,
+    enabled,
+  };
+
+  if (enabled) {
+    const ownerAddress = (await loadCliAddress(config)).address;
+    const defaults = config.chainId
+      ? getGaslessNetworkDefaults(config.chainId)
+      : undefined;
+    const derived = ownerAddress
+      ? await resolveGaslessExecutionConfig(config, {
+          ownerAddress,
+          chainId: config.chainId,
+          rpcUrl: config.rpcUrl ?? defaults?.rpcUrl,
+        })
+      : undefined;
+
+    nextGasless = {
+      ...nextGasless,
+      relayUrl: nextGasless.relayUrl ?? derived?.relayUrl ?? defaults?.relayUrl,
+      sponsor: nextGasless.sponsor ?? derived?.sponsor ?? defaults?.sponsor,
+      account: nextGasless.account ?? derived?.account,
+    };
+  }
 
   if (previous === enabled) {
     console.log(`Gasless is already ${formatEnabled(enabled)}.`);
   } else {
-    saveConfig(
-      {
-        ...config,
-        gasless: {
-          ...config.gasless,
-          enabled,
-        },
-      },
-    );
-    console.log(
-      `Gasless ${formatEnabled(enabled)} in ${getConfigPath()}.`,
-    );
+    console.log(`Gasless ${formatEnabled(enabled)} in ${getConfigPath()}.`);
   }
 
+  saveConfig({
+    ...config,
+    gasless: nextGasless,
+  });
+
   if (enabled) {
-    const missing = Object.entries(getGaslessRequiredEnvPresence())
+    const missing = Object.entries(getGaslessRequiredEnvPresence({
+      ...config,
+      gasless: nextGasless,
+    }))
       .filter(([, present]) => !present)
       .map(([key]) => key);
 
     if (missing.length > 0) {
       console.log(
-        `Warning: gasless is enabled, but these env vars are still missing: ${missing.join(", ")}.`,
+        `Warning: gasless is enabled, but these values are still missing: ${missing.join(", ")}.`,
       );
     }
   }
@@ -68,7 +93,7 @@ async function runGaslessToggle(enabled: boolean): Promise<void> {
 async function runGaslessStatus(): Promise<void> {
   const config = loadFileConfig();
   const enabled = isGaslessEnabled(config);
-  const envPresence = getGaslessRequiredEnvPresence();
+  const envPresence = getGaslessRequiredEnvPresence(config);
   const missing = Object.entries(envPresence)
     .filter(([, present]) => !present)
     .map(([key]) => key);
@@ -79,18 +104,18 @@ async function runGaslessStatus(): Promise<void> {
   }
 
   console.log(
-    `${gaslessEnvVarNames.relayUrl}: ${envPresence[gaslessEnvVarNames.relayUrl] ? "set" : "missing"}`,
+    `${gaslessEnvVarNames.relayUrl}: ${envPresence.relayUrl ? "set" : "missing"}`,
   );
   console.log(
-    `${gaslessEnvVarNames.account}: ${envPresence[gaslessEnvVarNames.account] ? "set" : "missing"}`,
+    `${gaslessEnvVarNames.account}: ${envPresence.account ? "set" : "missing"}`,
   );
   console.log(
-    `${gaslessEnvVarNames.sponsor}: ${envPresence[gaslessEnvVarNames.sponsor] ? "set" : "missing"}`,
+    `${gaslessEnvVarNames.sponsor}: ${envPresence.sponsor ? "set" : "missing"}`,
   );
 
   if (enabled && missing.length > 0) {
     console.log(
-      `Gasless is enabled but not runnable until missing env vars are set: ${missing.join(", ")}.`,
+      `Gasless is enabled but not runnable until missing values are set: ${missing.join(", ")}.`,
     );
     process.exitCode = 1;
   }
@@ -100,14 +125,14 @@ export const gaslessCommand = new Command("gasless")
   .description("Inspect and toggle gasless execution mode")
   .addCommand(
     new Command("status")
-      .description("Show whether gasless mode is enabled and whether required env is present")
+      .description("Show whether gasless mode is enabled and whether required config is present")
       .action(async () => {
         await runGaslessStatus();
       }),
   )
   .addCommand(
     new Command("enable")
-      .description("Enable gasless execution mode (still requires gasless env config)")
+      .description("Enable gasless execution mode and persist chain defaults when available")
       .action(async () => {
         await runGaslessToggle(true);
       }),

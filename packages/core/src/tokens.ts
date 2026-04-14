@@ -48,6 +48,15 @@ export const tokens: Record<string, Token> = {
       137: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
     },
   },
+  WETH: {
+    symbol: "WETH",
+    name: "Wrapped Ether",
+    decimals: 18,
+    addresses: {
+      42161: "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",
+      1: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    },
+  },
   RYZE: {
     symbol: "RYZE",
     name: "RYZE",

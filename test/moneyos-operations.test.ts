@@ -197,10 +197,10 @@ describe("MoneyOS operations", () => {
 describe("listTokens", () => {
   it("returns only tokens registered on the requested chain", () => {
     const arbitrum = listTokens(42161).map((t) => t.symbol);
-    expect(arbitrum).toEqual(["ETH", "USDC", "USDT", "RYZE"]);
+    expect(arbitrum).toEqual(["ETH", "USDC", "USDT", "WETH", "RYZE"]);
 
     const ethereum = listTokens(1).map((t) => t.symbol);
-    expect(ethereum).toEqual(["ETH", "USDC", "USDT"]);
+    expect(ethereum).toEqual(["ETH", "USDC", "USDT", "WETH"]);
 
     const polygon = listTokens(137).map((t) => t.symbol);
     expect(polygon).toEqual(["POL", "USDC", "USDT"]);
@@ -223,6 +223,7 @@ describe("MoneyOS.balances", () => {
       async ({ address }: { address: Address }) => {
         if (address === getTokenAddress("USDC", 42161)) return 1_000_000n;
         if (address === getTokenAddress("USDT", 42161)) return 2_000_000n;
+        if (address === getTokenAddress("WETH", 42161)) return parseUnits("0.25", 18);
         if (address === getTokenAddress("RYZE", 42161)) return parseUnits("3", 18);
         throw new Error(`unexpected contract read at ${address}`);
       },
@@ -239,16 +240,18 @@ describe("MoneyOS.balances", () => {
       "ETH",
       "USDC",
       "USDT",
+      "WETH",
       "RYZE",
     ]);
     expect(balances.map((b) => b.amount)).toEqual([
       "0.5",
       "1",
       "2",
+      "0.25",
       "3",
     ]);
     expect(read.getBalance).toHaveBeenCalledTimes(1);
-    expect(read.readContract).toHaveBeenCalledTimes(3);
+    expect(read.readContract).toHaveBeenCalledTimes(4);
   });
 
   it("defaults chainId to the configured default when not provided", async () => {
