@@ -32,6 +32,9 @@ moneyos auth unlock
 moneyos auth lock
 moneyos auth status
 moneyos auth change-password
+moneyos gasless status
+moneyos gasless enable
+moneyos gasless disable
 moneyos add <tool>
 moneyos remove <tool>
 moneyos update [tool] [--check]
@@ -69,6 +72,33 @@ moneyos add swap
 moneyos tools
 moneyos swap 0.1 RYZE ETH
 ```
+
+### Gasless mode (v1 opt-in)
+
+Gasless is available but default-off in v1.
+
+```bash
+moneyos gasless status
+moneyos gasless enable
+# re-unlock so the new executor mode applies
+moneyos auth unlock
+```
+
+When gasless mode is enabled, write commands use the gasless smart-account
+executor instead of the EOA executor. Disable it to return to EOA:
+
+```bash
+moneyos gasless disable
+moneyos auth unlock
+```
+
+Gasless execution currently requires these environment variables:
+
+- `MONEYOS_GASLESS_RELAY_URL`
+- `MONEYOS_GASLESS_ACCOUNT`
+- `MONEYOS_GASLESS_SPONSOR`
+- optional: `MONEYOS_GASLESS_NONCE_KEY`
+- optional: `MONEYOS_GASLESS_VALIDITY_WINDOW_SECONDS`
 
 ## SDK
 

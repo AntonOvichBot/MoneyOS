@@ -8,6 +8,7 @@ import { sendCommand } from "./commands/send.js";
 import { keystoreCommand } from "./commands/keystore.js";
 import { authCommand } from "./commands/auth.js";
 import { backupCommand } from "./commands/backup.js";
+import { gaslessCommand } from "./commands/gasless.js";
 import {
   createAddToolCommand,
   createRemoveToolCommand,
@@ -37,6 +38,7 @@ export function createProgram(options: CreateProgramOptions = {}): Command {
   program.addCommand(keystoreCommand);
   program.addCommand(authCommand);
   program.addCommand(backupCommand);
+  program.addCommand(gaslessCommand);
   program.addCommand(createAddToolCommand(toolManager));
   program.addCommand(createRemoveToolCommand(toolManager));
   program.addCommand(createUpdateToolCommand(toolManager));

@@ -10,6 +10,7 @@ import {
   getWalletPath,
   loadFileConfig,
 } from "../config.js";
+import { resolveGaslessExecutionConfig } from "../gasless.js";
 import { promptHidden } from "../prompt.js";
 import {
   getSessionStatus,
@@ -23,6 +24,7 @@ function formatSessionStatus(params: {
   state: "locked" | "unlocked";
   address?: string;
   expiresAt?: string;
+  mode?: "eoa" | "smart-account" | "delegated";
 }): string {
   const lines: string[] = [];
   lines.push(`Session:   ${params.state}`);
@@ -31,6 +33,9 @@ function formatSessionStatus(params: {
   }
   if (params.expiresAt) {
     lines.push(`Expires:   ${params.expiresAt}`);
+  }
+  if (params.mode) {
+    lines.push(`Executor:  ${params.mode}`);
   }
   return lines.join("\n");
 }
@@ -144,6 +149,7 @@ authCommand
       }
 
       const privateKey = await wallet.decrypt(passphrase);
+      const gasless = resolveGaslessExecutionConfig(config);
       const status = await startDetachedSessionDaemon({
         type: "start",
         privateKey,
@@ -152,6 +158,15 @@ authCommand
         socketPath: getSessionSocketPath(),
         tokenPath: getSessionTokenPath(),
         ttlMs: DEFAULT_TTL_MS,
+        gasless: gasless
+          ? {
+            account: gasless.account,
+            sponsor: gasless.sponsor,
+            relayUrl: gasless.relayUrl,
+            nonceKey: gasless.nonceKey?.toString(),
+            validityWindowSeconds: gasless.validityWindowSeconds,
+          }
+          : undefined,
       });
 
       console.log("Wallet unlocked.");
@@ -160,6 +175,7 @@ authCommand
           state: "unlocked",
           address: status.address,
           expiresAt: status.expiresAt,
+          mode: status.mode,
         }),
       );
     } catch (error) {
@@ -215,6 +231,7 @@ authCommand
         state: "unlocked",
         address: status.address,
         expiresAt: status.expiresAt,
+        mode: status.mode,
       }),
     );
   });
