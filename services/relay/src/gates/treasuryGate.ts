@@ -2,27 +2,21 @@ import type { RateLimitConfig } from "../../config/runtime.js";
 import type { RelayDatabase } from "../db/sqlite.js";
 import type { ExecuteIntentRequest } from "../http/routes/intents.js";
 
+const ONE_DAY_SECONDS = 60 * 60 * 24;
+const STATION_SCOPE = "station";
+
 export interface TreasuryGateOptions {
   db: RelayDatabase;
   rateLimit: RateLimitConfig;
   nowSeconds: () => number;
-  killSwitchEnabled: () => boolean;
 }
 
 export function createTreasuryGate(options: TreasuryGateOptions) {
   return async (_request: ExecuteIntentRequest): Promise<boolean> => {
-    if (options.killSwitchEnabled()) {
-      return false;
-    }
-
     const now = options.nowSeconds();
-    const usage = options.db.getUsage("global", now, options.rateLimit.windowSeconds);
+    const usage = options.db.getUsage(STATION_SCOPE, now, ONE_DAY_SECONDS);
 
-    if (usage.txCount + 1 > options.rateLimit.globalMaxTx) {
-      return false;
-    }
-
-    if (usage.gasWei + options.rateLimit.perTxMaxGasWei > options.rateLimit.globalMaxGasWei) {
+    if (usage.txCount + 1 > options.rateLimit.perStationPerDayTx) {
       return false;
     }
 
@@ -32,9 +26,9 @@ export function createTreasuryGate(options: TreasuryGateOptions) {
 
 export function applyTreasuryUsage(options: TreasuryGateOptions): void {
   options.db.recordUsage(
-    "global",
+    STATION_SCOPE,
     options.nowSeconds(),
-    options.rateLimit.windowSeconds,
+    ONE_DAY_SECONDS,
     options.rateLimit.perTxMaxGasWei,
   );
 }

@@ -24,24 +24,21 @@ const request: ExecuteIntentRequest = {
 };
 
 describe("wallet rate limit rollover", () => {
-  it("allows new submissions after rolling window boundary", async () => {
+  it("enforces per-hour cap and allows submissions after next hourly window", async () => {
     const db = new RelayDatabase(":memory:");
-    let now = 100;
+    let now = 3_598;
 
     const rateLimit: RateLimitConfig = {
-      windowSeconds: 10,
-      walletMaxTx: 2,
-      walletMaxGasWei: 20n,
-      globalMaxTx: 10,
-      globalMaxGasWei: 100n,
-      perTxMaxGasWei: 5n,
+      perUserPerHourTx: 2,
+      perUserPerDayTx: 20,
+      perStationPerDayTx: 2000,
+      perTxMaxGasWei: 500_000_000_000_000n,
     };
 
     const options = {
       db,
       rateLimit,
       nowSeconds: () => now,
-      killSwitchEnabled: () => false,
     };
 
     const walletGate = createWalletGate(options);
@@ -54,7 +51,7 @@ describe("wallet rate limit rollover", () => {
 
     expect(await walletGate(request)).toBe(false);
 
-    now = 111;
+    now = 3_601;
     expect(await walletGate(request)).toBe(true);
 
     db.close();

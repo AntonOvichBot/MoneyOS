@@ -32,16 +32,26 @@ export async function startRelayServer() {
     },
   });
 
-  const healthClient = createPublicClient({
+  const publicClient = createPublicClient({
     chain,
     transport: http(runtime.rpcUrl),
   });
 
   const relayHealthy = createRelayHealthyGate({
-    killSwitchEnabled,
     expectedChainId: runtime.chainId,
+    sponsorAddress: runtime.relayAddress,
+    minimumSponsorBalanceWei: runtime.hotWallet.minBalanceWei,
+    autoRefillThresholdWei: runtime.hotWallet.autoRefillThresholdWei,
     client: {
-      getChainId: async () => healthClient.getChainId(),
+      getChainId: async () => publicClient.getChainId(),
+      getBlockNumber: async () => publicClient.getBlockNumber(),
+      getBalance: async (args) => publicClient.getBalance(args),
+    },
+    onAutoRefillNeeded: ({ balanceWei, thresholdWei }) => {
+      console.warn("sponsor balance crossed auto-refill threshold", {
+        balanceWei: balanceWei.toString(),
+        thresholdWei: thresholdWei.toString(),
+      });
     },
   });
 
@@ -49,14 +59,12 @@ export async function startRelayServer() {
     db,
     rateLimit: runtime.rateLimit,
     nowSeconds,
-    killSwitchEnabled,
   };
 
   const walletOptions = {
     db,
     rateLimit: runtime.rateLimit,
     nowSeconds,
-    killSwitchEnabled,
   };
 
   const submissionAdapter = createSubmissionAdapter(runtime, db, {
@@ -70,10 +78,15 @@ export async function startRelayServer() {
   const app = buildRelayApp({
     policy,
     relayAddress: runtime.relayAddress,
+    killSwitchEnabled,
     db,
     nowSeconds,
     reserveNonce: createReserveNonceGate(db, nowSeconds),
-    simulate: createSimulateGate(),
+    simulate: createSimulateGate({
+      runtime,
+      sponsorAddress: runtime.relayAddress,
+      publicClient,
+    }),
     treasuryGate: createTreasuryGate(treasuryOptions),
     walletGate: createWalletGate(walletOptions),
     relayHealthy,
@@ -89,14 +102,20 @@ export async function startRelayServer() {
     db.close();
   });
 
+  let stopping = false;
   const stop = async () => {
+    if (stopping) {
+      return;
+    }
+
+    stopping = true;
     await app.close();
   };
 
-  process.on("SIGINT", () => {
+  process.once("SIGINT", () => {
     void stop();
   });
-  process.on("SIGTERM", () => {
+  process.once("SIGTERM", () => {
     void stop();
   });
 

@@ -2,32 +2,43 @@ import type { RateLimitConfig } from "../../config/runtime.js";
 import type { RelayDatabase } from "../db/sqlite.js";
 import type { ExecuteIntentRequest } from "../http/routes/intents.js";
 
-function walletScope(address: string): string {
-  return `wallet:${address.toLowerCase()}`;
+const ONE_HOUR_SECONDS = 60 * 60;
+const ONE_DAY_SECONDS = 60 * 60 * 24;
+
+function walletHourlyScope(address: string): string {
+  return `wallet:${address.toLowerCase()}:hour`;
+}
+
+function walletDailyScope(address: string): string {
+  return `wallet:${address.toLowerCase()}:day`;
 }
 
 export interface WalletGateOptions {
   db: RelayDatabase;
   rateLimit: RateLimitConfig;
   nowSeconds: () => number;
-  killSwitchEnabled: () => boolean;
 }
 
 export function createWalletGate(options: WalletGateOptions) {
   return async (request: ExecuteIntentRequest): Promise<boolean> => {
-    if (options.killSwitchEnabled()) {
-      return false;
-    }
-
     const now = options.nowSeconds();
-    const scope = walletScope(request.intent.account);
-    const usage = options.db.getUsage(scope, now, options.rateLimit.windowSeconds);
+    const account = request.intent.account;
 
-    if (usage.txCount + 1 > options.rateLimit.walletMaxTx) {
+    const perHourUsage = options.db.getUsage(
+      walletHourlyScope(account),
+      now,
+      ONE_HOUR_SECONDS,
+    );
+    if (perHourUsage.txCount + 1 > options.rateLimit.perUserPerHourTx) {
       return false;
     }
 
-    if (usage.gasWei + options.rateLimit.perTxMaxGasWei > options.rateLimit.walletMaxGasWei) {
+    const perDayUsage = options.db.getUsage(
+      walletDailyScope(account),
+      now,
+      ONE_DAY_SECONDS,
+    );
+    if (perDayUsage.txCount + 1 > options.rateLimit.perUserPerDayTx) {
       return false;
     }
 
@@ -36,10 +47,17 @@ export function createWalletGate(options: WalletGateOptions) {
 }
 
 export function applyWalletUsage(options: WalletGateOptions, account: string): void {
+  const now = options.nowSeconds();
   options.db.recordUsage(
-    walletScope(account),
-    options.nowSeconds(),
-    options.rateLimit.windowSeconds,
+    walletHourlyScope(account),
+    now,
+    ONE_HOUR_SECONDS,
+    options.rateLimit.perTxMaxGasWei,
+  );
+  options.db.recordUsage(
+    walletDailyScope(account),
+    now,
+    ONE_DAY_SECONDS,
     options.rateLimit.perTxMaxGasWei,
   );
 }

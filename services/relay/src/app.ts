@@ -9,6 +9,7 @@ import type { SubmissionAdapter } from "./submit/adapter.js";
 export interface RelayAppDependencies {
   policy: PolicyConfig;
   relayAddress: string;
+  killSwitchEnabled: () => boolean;
   db: RelayDatabase;
   nowSeconds: () => number;
   reserveNonce: (intent: PolicyInput["intent"], idempotencyKey?: `0x${string}`) => Promise<boolean>;
@@ -130,6 +131,19 @@ function parseExecuteIntentRequest(payload: unknown): ExecuteIntentRequest {
   };
 }
 
+function rejectionStatusCode(policyCode?: string): number {
+  switch (policyCode) {
+    case "relay_unhealthy":
+      return 503;
+    case "treasury_or_wallet_limit":
+      return 429;
+    case "nonce_not_reserved":
+      return 409;
+    default:
+      return 422;
+  }
+}
+
 export function buildRelayApp(deps: RelayAppDependencies): FastifyInstance {
   const app = Fastify({
     logger: {
@@ -138,6 +152,15 @@ export function buildRelayApp(deps: RelayAppDependencies): FastifyInstance {
   });
 
   app.post("/v1/execute", async (request, reply) => {
+    if (deps.killSwitchEnabled()) {
+      reply.code(503);
+      return {
+        status: "rejected",
+        code: "kill_switch_active",
+        reason: "Relay kill switch is active.",
+      };
+    }
+
     let executeRequest: ExecuteIntentRequest;
 
     try {
@@ -165,6 +188,7 @@ export function buildRelayApp(deps: RelayAppDependencies): FastifyInstance {
         reason: decision.reason ?? "Rejected by policy",
       });
 
+      reply.code(rejectionStatusCode(decision.policyCode));
       return {
         submissionId: decision.submissionId,
         status: "rejected",
@@ -191,9 +215,10 @@ export function buildRelayApp(deps: RelayAppDependencies): FastifyInstance {
         txHash: submission.txHash,
       };
     } catch (error) {
+      reply.code(502);
       return {
         submissionId: decision.submissionId,
-        status: "rejected",
+        status: "failed",
         reason: error instanceof Error ? error.message : "Submission failed",
       };
     }

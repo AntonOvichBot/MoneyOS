@@ -1,9 +1,19 @@
-import { moneyOSAccountV1Abi } from "@moneyos/gasless";
-import { createPublicClient, createWalletClient, defineChain, http } from "viem";
+import { moneyOSAccountFactoryV1Abi, moneyOSAccountV1Abi } from "@moneyos/gasless";
+import {
+  createPublicClient,
+  createWalletClient,
+  defineChain,
+  http,
+  TransactionNotFoundError,
+  TransactionReceiptNotFoundError,
+  type Address,
+  type Hex,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { RuntimeConfig } from "../../config/runtime.js";
 import type { RelayDatabase } from "../db/sqlite.js";
 import type { ExecuteIntentRequest } from "../http/routes/intents.js";
+import { resolveSubmissionPath, type SubmissionPathClient } from "./path.js";
 
 export interface SubmitResult {
   txHash: `0x${string}`;
@@ -21,15 +31,23 @@ export interface SubmissionLogger {
 }
 
 export interface SubmissionWalletClient {
-  writeContract: (args: {
-    address: `0x${string}`;
-    abi: typeof moneyOSAccountV1Abi;
-    functionName: "execute";
-    args: [ExecuteIntentRequest["intent"], `0x${string}`];
-  }) => Promise<`0x${string}`>;
+  writeContract: (args:
+    | {
+        address: Address;
+        abi: typeof moneyOSAccountV1Abi;
+        functionName: "execute";
+        args: [ExecuteIntentRequest["intent"], Hex];
+      }
+    | {
+        address: Address;
+        abi: typeof moneyOSAccountFactoryV1Abi;
+        functionName: "deployAndExecute";
+        args: [Address, Hex, ExecuteIntentRequest["intent"], Hex];
+        value: bigint;
+      }) => Promise<`0x${string}`>;
 }
 
-export interface SubmissionPublicClient {
+export interface SubmissionPublicClient extends SubmissionPathClient {
   getTransactionReceipt: (args: { hash: `0x${string}` }) => Promise<{
     status: "success" | "reverted";
     blockNumber: bigint;
@@ -38,6 +56,7 @@ export interface SubmissionPublicClient {
 }
 
 export interface SubmissionAdapterOptions {
+  runtime: RuntimeConfig;
   db: RelayDatabase;
   walletClient: SubmissionWalletClient;
   publicClient: SubmissionPublicClient;
@@ -47,13 +66,9 @@ export interface SubmissionAdapterOptions {
 }
 
 function isReceiptPendingError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
   return (
-    error.name === "TransactionReceiptNotFoundError" ||
-    error.message.toLowerCase().includes("receipt")
+    error instanceof TransactionReceiptNotFoundError ||
+    error instanceof TransactionNotFoundError
   );
 }
 
@@ -86,12 +101,27 @@ export class SubmissionAdapter {
     this.options.db.upsertSubmission(input.submissionId, "pending", now);
 
     try {
-      const txHash = await this.options.walletClient.writeContract({
-        address: input.request.intent.account as `0x${string}`,
-        abi: moneyOSAccountV1Abi,
-        functionName: "execute",
-        args: [input.request.intent, input.request.signature],
-      });
+      const path = await resolveSubmissionPath(
+        input.request,
+        this.options.runtime,
+        this.options.publicClient,
+      );
+
+      const txHash =
+        path.kind === "deploy-and-execute"
+          ? await this.options.walletClient.writeContract({
+              address: path.factoryAddress,
+              abi: moneyOSAccountFactoryV1Abi,
+              functionName: "deployAndExecute",
+              args: [path.owner, path.salt, input.request.intent, input.request.signature],
+              value: path.value,
+            })
+          : await this.options.walletClient.writeContract({
+              address: input.request.intent.account as Address,
+              abi: moneyOSAccountV1Abi,
+              functionName: "execute",
+              args: [input.request.intent, input.request.signature],
+            });
 
       this.options.db.upsertSubmission(input.submissionId, "submitted", this.options.nowSeconds(), {
         txHash,
@@ -189,6 +219,7 @@ export function createSubmissionAdapter(config: RuntimeConfig, db: RelayDatabase
   }) as unknown as SubmissionPublicClient;
 
   return new SubmissionAdapter({
+    runtime: config,
     db,
     walletClient,
     publicClient,

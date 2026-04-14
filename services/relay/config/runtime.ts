@@ -3,16 +3,18 @@ import path from "node:path";
 import { privateKeyToAccount } from "viem/accounts";
 import type { PolicyConfig } from "../src/policy/types.js";
 
-const DEFAULT_DEV_PRIVATE_KEY =
-  "0x59c6995e998f97a5a0044966f094538f7d0f8f2f3f4d5c6e7f8090a1b2c3d4e5" as const;
+const DEFAULT_FACTORY_SALT = "0x661dc84e663a6c53a7d8c503cd081a8242171c4ee21f5f559d01e1b71d9a8de1" as const;
 
 export interface RateLimitConfig {
-  windowSeconds: number;
-  walletMaxTx: number;
-  walletMaxGasWei: bigint;
-  globalMaxTx: number;
-  globalMaxGasWei: bigint;
+  perUserPerDayTx: number;
+  perUserPerHourTx: number;
+  perStationPerDayTx: number;
   perTxMaxGasWei: bigint;
+}
+
+export interface HotWalletConfig {
+  minBalanceWei: bigint;
+  autoRefillThresholdWei: bigint;
 }
 
 export interface RuntimeConfig {
@@ -25,9 +27,12 @@ export interface RuntimeConfig {
   policyPath: string;
   sponsorPrivateKey: `0x${string}`;
   relayAddress: `0x${string}`;
+  accountFactoryAddress?: `0x${string}`;
+  accountFactorySalt: `0x${string}`;
   killSwitch: boolean;
   confirmPollMs: number;
   rateLimit: RateLimitConfig;
+  hotWallet: HotWalletConfig;
 }
 
 function parseNumber(name: string, value: string | undefined, fallback: number): number {
@@ -75,6 +80,42 @@ function parseBoolean(value: string | undefined, fallback: boolean): boolean {
   throw new Error(`Invalid boolean value "${value}".`);
 }
 
+function parseAddress(name: string, value: string | undefined): `0x${string}` {
+  if (!value || !/^0x[0-9a-fA-F]{40}$/.test(value)) {
+    throw new Error(`Invalid ${name}: expected 0x-prefixed 20-byte address.`);
+  }
+
+  return value as `0x${string}`;
+}
+
+function parsePrivateKey(name: string, value: string | undefined): `0x${string}` {
+  if (!value || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(`Missing or invalid ${name}: expected 0x-prefixed 32-byte private key.`);
+  }
+
+  return value as `0x${string}`;
+}
+
+function parseHex32(name: string, value: string | undefined, fallback: `0x${string}`): `0x${string}` {
+  const candidate = value?.trim() || fallback;
+  if (!/^0x[0-9a-fA-F]{64}$/.test(candidate)) {
+    throw new Error(`Invalid ${name}: expected 32-byte hex string.`);
+  }
+
+  return candidate as `0x${string}`;
+}
+
+function pickEnv(env: NodeJS.ProcessEnv, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = env[name];
+    if (value !== undefined && value.trim() !== "") {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 function resolvePolicyPath(explicit: string | undefined): string {
   const candidates = [
     explicit,
@@ -102,13 +143,44 @@ function defaultSqlitePath(): string {
 }
 
 export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): RuntimeConfig {
-  const sponsorPrivateKey =
-    (env.MONEYOS_RELAY_SPONSOR_PRIVATE_KEY as `0x${string}` | undefined) ??
-    DEFAULT_DEV_PRIVATE_KEY;
+  const sponsorPrivateKey = parsePrivateKey(
+    "MONEYOS_RELAY_SPONSOR_PRIVATE_KEY",
+    env.MONEYOS_RELAY_SPONSOR_PRIVATE_KEY,
+  );
 
   const derivedRelayAddress = privateKeyToAccount(sponsorPrivateKey).address;
   const relayAddress =
-    (env.MONEYOS_RELAY_ADDRESS as `0x${string}` | undefined) ?? derivedRelayAddress;
+    env.MONEYOS_RELAY_ADDRESS === undefined
+      ? derivedRelayAddress
+      : parseAddress("MONEYOS_RELAY_ADDRESS", env.MONEYOS_RELAY_ADDRESS);
+
+  const perTxMaxGasWei = parseBigint(
+    "MONEYOS_RELAY_PER_TX_MAX_GAS_WEI",
+    pickEnv(env, "MONEYOS_RELAY_PER_TX_MAX_GAS_WEI"),
+    500_000_000_000_000n,
+  );
+
+  const minBalanceWei = parseBigint(
+    "MONEYOS_RELAY_HOT_WALLET_MIN_BALANCE_WEI",
+    env.MONEYOS_RELAY_HOT_WALLET_MIN_BALANCE_WEI,
+    perTxMaxGasWei,
+  );
+
+  const autoRefillThresholdWei = parseBigint(
+    "MONEYOS_RELAY_HOT_WALLET_AUTO_REFILL_THRESHOLD_WEI",
+    env.MONEYOS_RELAY_HOT_WALLET_AUTO_REFILL_THRESHOLD_WEI,
+    2_000_000_000_000_000n,
+  );
+
+  if (autoRefillThresholdWei < minBalanceWei) {
+    throw new Error(
+      "Invalid hot-wallet thresholds: MONEYOS_RELAY_HOT_WALLET_AUTO_REFILL_THRESHOLD_WEI must be >= MONEYOS_RELAY_HOT_WALLET_MIN_BALANCE_WEI.",
+    );
+  }
+
+  const accountFactoryAddress = env.MONEYOS_RELAY_ACCOUNT_FACTORY_ADDRESS?.trim()
+    ? parseAddress("MONEYOS_RELAY_ACCOUNT_FACTORY_ADDRESS", env.MONEYOS_RELAY_ACCOUNT_FACTORY_ADDRESS)
+    : undefined;
 
   return {
     host: env.MONEYOS_RELAY_HOST?.trim() || "0.0.0.0",
@@ -120,31 +192,35 @@ export function loadRuntimeConfig(env: NodeJS.ProcessEnv = process.env): Runtime
     policyPath: resolvePolicyPath(env.MONEYOS_RELAY_POLICY_PATH?.trim()),
     sponsorPrivateKey,
     relayAddress,
+    accountFactoryAddress,
+    accountFactorySalt: parseHex32(
+      "MONEYOS_RELAY_ACCOUNT_FACTORY_SALT",
+      env.MONEYOS_RELAY_ACCOUNT_FACTORY_SALT,
+      DEFAULT_FACTORY_SALT,
+    ),
     killSwitch: parseBoolean(env.MONEYOS_RELAY_KILL_SWITCH, false),
     confirmPollMs: parseNumber("MONEYOS_RELAY_CONFIRM_POLL_MS", env.MONEYOS_RELAY_CONFIRM_POLL_MS, 5000),
     rateLimit: {
-      windowSeconds: parseNumber(
-        "MONEYOS_RELAY_RATE_LIMIT_WINDOW_SECONDS",
-        env.MONEYOS_RELAY_RATE_LIMIT_WINDOW_SECONDS,
-        60 * 60 * 24,
+      perUserPerDayTx: parseNumber(
+        "MONEYOS_RELAY_PER_USER_PER_DAY_TX",
+        pickEnv(env, "MONEYOS_RELAY_PER_USER_PER_DAY_TX", "MONEYOS_RELAY_WALLET_MAX_TX"),
+        20,
       ),
-      walletMaxTx: parseNumber("MONEYOS_RELAY_WALLET_MAX_TX", env.MONEYOS_RELAY_WALLET_MAX_TX, 3),
-      walletMaxGasWei: parseBigint(
-        "MONEYOS_RELAY_WALLET_MAX_GAS_WEI",
-        env.MONEYOS_RELAY_WALLET_MAX_GAS_WEI,
-        1_000_000_000_000_000n,
+      perUserPerHourTx: parseNumber(
+        "MONEYOS_RELAY_PER_USER_PER_HOUR_TX",
+        env.MONEYOS_RELAY_PER_USER_PER_HOUR_TX,
+        5,
       ),
-      globalMaxTx: parseNumber("MONEYOS_RELAY_GLOBAL_MAX_TX", env.MONEYOS_RELAY_GLOBAL_MAX_TX, 200),
-      globalMaxGasWei: parseBigint(
-        "MONEYOS_RELAY_GLOBAL_MAX_GAS_WEI",
-        env.MONEYOS_RELAY_GLOBAL_MAX_GAS_WEI,
-        30_000_000_000_000_000n,
+      perStationPerDayTx: parseNumber(
+        "MONEYOS_RELAY_PER_STATION_PER_DAY_TX",
+        pickEnv(env, "MONEYOS_RELAY_PER_STATION_PER_DAY_TX", "MONEYOS_RELAY_GLOBAL_MAX_TX"),
+        2000,
       ),
-      perTxMaxGasWei: parseBigint(
-        "MONEYOS_RELAY_PER_TX_MAX_GAS_WEI",
-        env.MONEYOS_RELAY_PER_TX_MAX_GAS_WEI,
-        800_000_000_000_000n,
-      ),
+      perTxMaxGasWei,
+    },
+    hotWallet: {
+      minBalanceWei,
+      autoRefillThresholdWei,
     },
   };
 }
