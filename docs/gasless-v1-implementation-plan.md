@@ -213,21 +213,14 @@ Settled:
 
 ## Remaining blockers before build
 
-### 1. User-side automation-key UX
-Need the minimal v1 story for:
-- how a user creates an authorized key
-- how it is scoped
-- how it is revoked
-- whether v1 ships any CLI UX for this or keeps it owner-only first
-
-### 2. Final policy/config freeze
+### 1. Final policy/config freeze
 The relay policy shape is now concrete, but before coding starts we still need the exact v1 config values checked into the right place:
 - Arbitrum token allowlist source of truth
 - Odos router address list
 - Odos swap selector allowlist
 - policy version naming and capability reporting
 
-### 3. Treasury defaults acceptance
+### 2. Treasury defaults acceptance
 The launch defaults are now concrete, but they still need to be treated as explicit launch settings rather than loose guidance.
 
 ## Recommended defaults if we need to keep moving
@@ -236,9 +229,32 @@ If no better product decision appears quickly, use these:
 - sponsored send + swap only
 - owner key can always sign
 - authorized keys supported in contract surface from day one
-- owner-only signing path at first release if automation-key UX slips
 - static allowlist driven by config per chain/provider
 - conservative treasury caps with a global kill switch
+
+Recommended minimal user-side automation-key UX for v1:
+- contract supports authorized keys from day one
+- first release may still ship owner-only signing for actual gasless use if scoped-key CLI work slips
+- if scoped-key UX ships in v1, keep it minimal and owner-driven:
+  - generate key locally on user device
+  - register key on-chain with explicit scope
+  - no MoneyOS custody of signing keys
+  - no GUI/session-key product layer yet
+- minimal CLI surface if implemented:
+  - `moneyos auth key generate`
+  - `moneyos auth key add --address <addr> --targets <...> --selectors <...> --max-value <...> --valid-until <...>`
+  - `moneyos auth key revoke --address <addr>`
+- recommended first-release fallback if CLI work is tight:
+  - contracts and SDK support authorized keys
+  - owner-only signing path in product/CLI
+  - scoped-key UX deferred one increment without changing contract surface
+
+Recommended policy/config source of truth for v1:
+- relay policy code: `services/relay/src/policy/moneyos-native-policy.ts`
+- chain config: `services/relay/config/policy.arbitrum.json`
+- Arbitrum token allowlist seeded from `packages/core/src/tokens.ts` where `chainId === 42161`
+- Odos router address + allowed swap selectors stored in relay config, versioned with the policy
+- `GET /v1/capabilities` should expose active policy version and supported flow shapes
 
 Recommended launch treasury defaults:
 - per-wallet cap: `0.001 ETH` per rolling 24h
@@ -273,3 +289,5 @@ Before safe coding starts, we should have:
 - package boundaries accepted
 
 Once those are true, implementation can start in the fork without guessing.
+
+At this point, the remaining work is mostly config finalization and implementation, not architecture discovery.
