@@ -141,38 +141,31 @@ export function evaluateMoneyOSNativePolicy(
     return fail("sponsor_mismatch", "Intent sponsor must match relay identity.");
   }
 
-  if (!input.nonceReserved) {
-    return fail("nonce_not_reserved", "Nonce reservation failed or missing.");
-  }
-
-  if (!input.simulationPassed) {
-    return fail("simulation_failed", "Execution simulation failed.");
-  }
-
-  if (!input.treasuryAllowed || !input.walletAllowed) {
-    return fail("treasury_or_wallet_limit", "Treasury or wallet caps rejected this intent.");
-  }
-
   const now = BigInt(input.nowSeconds);
   if (now < input.intent.validAfter) {
     return fail("intent_not_yet_valid", "Intent validAfter is in the future.");
   }
 
-  if (input.intent.validUntil !== 0n) {
-    if (input.intent.validUntil < input.intent.validAfter) {
-      return fail("invalid_window", "validUntil must be greater than or equal to validAfter.");
-    }
+  if (input.intent.validUntil === 0n) {
+    return fail(
+      "window_too_long",
+      `Intent window exceeds ${config.maxIntentWindowSeconds} seconds policy cap.`,
+    );
+  }
 
-    if (now > input.intent.validUntil) {
-      return fail("intent_expired", "Intent is outside its validity window.");
-    }
+  if (input.intent.validUntil < input.intent.validAfter) {
+    return fail("invalid_window", "validUntil must be greater than or equal to validAfter.");
+  }
 
-    if (Number(input.intent.validUntil - input.intent.validAfter) > config.maxIntentWindowSeconds) {
-      return fail(
-        "window_too_long",
-        `Intent window exceeds ${config.maxIntentWindowSeconds} seconds policy cap.`,
-      );
-    }
+  if (now > input.intent.validUntil) {
+    return fail("intent_expired", "Intent is outside its validity window.");
+  }
+
+  if (input.intent.validUntil - input.intent.validAfter > BigInt(config.maxIntentWindowSeconds)) {
+    return fail(
+      "window_too_long",
+      `Intent window exceeds ${config.maxIntentWindowSeconds} seconds policy cap.`,
+    );
   }
 
   const calls = input.intent.calls;
@@ -184,46 +177,64 @@ export function evaluateMoneyOSNativePolicy(
   const odosRouters = new Set(config.odosRouters.map(normalizeAddress));
   const swapSelectors = new Set(config.odosSwapSelectors.map((selector) => selector.toLowerCase()));
 
+  let flow: PolicyDecision["flow"];
+  let reason: string;
+
   if (isNativeSend(calls)) {
-    return { ok: true, code: "ok", reason: "native send allowed", flow: "native-send" };
+    flow = "native-send";
+    reason = "native send allowed";
+  } else if (isErc20Send(calls, tokenAllowlist)) {
+    flow = "erc20-send";
+    reason = "erc20 send allowed";
+  } else {
+    const swapShape =
+      isNativeInSwap(calls, odosRouters, swapSelectors) ||
+      isErc20InSwap(calls, tokenAllowlist, odosRouters, swapSelectors);
+
+    if (!swapShape) {
+      return fail("shape_not_allowed", "Call batch does not match an allowed v1 send/swap shape.");
+    }
+
+    if (!input.route) {
+      return fail("route_missing", "Swap sponsorship requires route freshness metadata.");
+    }
+
+    if (!input.route.providerId || !input.route.quotedAt) {
+      return fail("route_metadata_incomplete", "Route metadata missing providerId or quotedAt.");
+    }
+
+    if (input.route.quoteId === undefined || input.route.quoteId.trim() === "") {
+      return fail("quote_id_missing", "Swap submissions require provider quote identifier.");
+    }
+
+    if (input.nowSeconds - input.route.quotedAt > config.maxRouteAgeSeconds) {
+      return fail("route_stale", "Provider quote age is outside freshness policy.");
+    }
+
+    if (input.route.expiresAt !== undefined && input.nowSeconds > input.route.expiresAt) {
+      return fail("route_expired", "Provider quote expiry has passed.");
+    }
+
+    flow = calls.length === 1 ? "native-swap" : "erc20-swap";
+    reason = calls.length === 1 ? "native-in swap allowed" : "erc20-in swap allowed";
   }
 
-  if (isErc20Send(calls, tokenAllowlist)) {
-    return { ok: true, code: "ok", reason: "erc20 send allowed", flow: "erc20-send" };
+  if (!input.simulationPassed) {
+    return fail("simulation_failed", "Execution simulation failed.");
   }
 
-  const swapShape =
-    isNativeInSwap(calls, odosRouters, swapSelectors) ||
-    isErc20InSwap(calls, tokenAllowlist, odosRouters, swapSelectors);
-
-  if (!swapShape) {
-    return fail("shape_not_allowed", "Call batch does not match an allowed v1 send/swap shape.");
+  if (!input.nonceReserved) {
+    return fail("nonce_not_reserved", "Nonce reservation failed or missing.");
   }
 
-  if (!input.route) {
-    return fail("route_missing", "Swap sponsorship requires route freshness metadata.");
-  }
-
-  if (!input.route.providerId || !input.route.quotedAt) {
-    return fail("route_metadata_incomplete", "Route metadata missing providerId or quotedAt.");
-  }
-
-  if (input.route.quoteId === undefined || input.route.quoteId.trim() === "") {
-    return fail("quote_id_missing", "Swap submissions require provider quote identifier.");
-  }
-
-  if (input.nowSeconds - input.route.quotedAt > config.maxRouteAgeSeconds) {
-    return fail("route_stale", "Provider quote age is outside freshness policy.");
-  }
-
-  if (input.route.expiresAt !== undefined && input.nowSeconds > input.route.expiresAt) {
-    return fail("route_expired", "Provider quote expiry has passed.");
+  if (!input.treasuryAllowed || !input.walletAllowed) {
+    return fail("treasury_or_wallet_limit", "Treasury or wallet caps rejected this intent.");
   }
 
   return {
     ok: true,
     code: "ok",
-    reason: calls.length === 1 ? "native-in swap allowed" : "erc20-in swap allowed",
-    flow: calls.length === 1 ? "native-swap" : "erc20-swap",
+    reason,
+    flow,
   };
 }

@@ -1,4 +1,4 @@
-import { intentIdempotencyKey } from "../../../../../packages/gasless/src/nonce/lane.js";
+import { intentIdempotencyKey } from "@moneyos/gasless";
 import type { PolicyConfig, PolicyInput } from "../../policy/types.js";
 import { evaluateMoneyOSNativePolicy } from "../../policy/moneyos-native-policy.js";
 
@@ -37,20 +37,47 @@ export async function evaluateExecuteIntent(
     nonceSeq: request.intent.nonceSeq,
   });
 
-  const [simulationPassed, treasuryAllowed, walletAllowed, relayHealthy] = await Promise.all([
+  const nowSeconds = deps.nowSeconds();
+  const relayHealthy = await deps.relayHealthy();
+
+  const preflight = evaluateMoneyOSNativePolicy(
+    {
+      nowSeconds,
+      chainId: deps.policy.chainId,
+      relayAddress: deps.relayAddress,
+      intent: request.intent,
+      route: request.route,
+      nonceReserved: true,
+      simulationPassed: true,
+      treasuryAllowed: true,
+      walletAllowed: true,
+      relayHealthy,
+    },
+    deps.policy,
+  );
+
+  if (!preflight.ok) {
+    return {
+      status: "rejected",
+      reason: preflight.reason,
+      policyCode: preflight.code,
+    };
+  }
+
+  const [simulationPassed, treasuryAllowed, walletAllowed] = await Promise.all([
     deps.simulate(request),
     deps.treasuryGate(request),
     deps.walletGate(request),
-    deps.relayHealthy(),
   ]);
 
-  const nonceReserved = simulationPassed
-    ? await deps.reserveNonce(request.intent, submissionId)
-    : true;
+  let nonceReserved = false;
+  if (simulationPassed) {
+    nonceReserved = await deps.reserveNonce(request.intent, submissionId);
+  }
 
   const decision = evaluateMoneyOSNativePolicy(
     {
-      nowSeconds: deps.nowSeconds(),
+      nowSeconds,
       chainId: deps.policy.chainId,
       relayAddress: deps.relayAddress,
       intent: request.intent,

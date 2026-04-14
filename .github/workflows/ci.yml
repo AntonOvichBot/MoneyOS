@@ -33,19 +33,32 @@ jobs:
         run: npm ci
 
       - name: Prepare workspace outputs
-        run: npm run build:core
+        run: |
+          npm run build:core
+          npm run build:gasless
 
       - name: Typecheck
         run: |
           npm run typecheck
           npm run typecheck:core
           npm run typecheck:swap
+          npm run typecheck:gasless
 
       - name: Lint
         run: |
           npm run lint
           npm run lint:core
           npm run lint:swap
+          npm run lint:gasless
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Gasless forge tests
+        run: npm run test:contracts --workspace=packages/gasless
+
+      - name: Relay route tests
+        run: npx vitest run services/relay/src/http/routes/capabilities.test.ts services/relay/src/http/routes/intents.test.ts
 
       - name: Test with coverage
         run: npm run test:coverage

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { intentIdempotencyKey } from "../../../../../packages/gasless/src/nonce/lane.js";
+import { intentIdempotencyKey } from "@moneyos/gasless";
 import type { PolicyConfig } from "../../policy/types.js";
 import { evaluateExecuteIntent, type ExecuteIntentDependencies, type ExecuteIntentRequest } from "./intents.js";
 
@@ -50,6 +50,58 @@ function makeDeps(overrides: Partial<ExecuteIntentDependencies>): ExecuteIntentD
 }
 
 describe("evaluateExecuteIntent", () => {
+  it("rejects malformed intents before simulation and reservation", async () => {
+    const baseRequest = makeRequest();
+    const request: ExecuteIntentRequest = {
+      ...baseRequest,
+      intent: {
+        ...baseRequest.intent,
+        calls: [],
+      },
+    };
+
+    const simulate = vi.fn(async () => true);
+    const treasuryGate = vi.fn(async () => true);
+    const walletGate = vi.fn(async () => true);
+    const reserveNonce = vi.fn(async () => true);
+
+    const response = await evaluateExecuteIntent(
+      request,
+      makeDeps({ simulate, treasuryGate, walletGate, reserveNonce }),
+    );
+
+    expect(response.status).toBe("rejected");
+    expect(response.policyCode).toBe("empty_calls");
+    expect(simulate).not.toHaveBeenCalled();
+    expect(treasuryGate).not.toHaveBeenCalled();
+    expect(walletGate).not.toHaveBeenCalled();
+    expect(reserveNonce).not.toHaveBeenCalled();
+  });
+
+  it("rejects unbounded sponsored window before simulation", async () => {
+    const baseRequest = makeRequest();
+    const request: ExecuteIntentRequest = {
+      ...baseRequest,
+      intent: {
+        ...baseRequest.intent,
+        validUntil: 0n,
+      },
+    };
+
+    const simulate = vi.fn(async () => true);
+    const reserveNonce = vi.fn(async () => true);
+
+    const response = await evaluateExecuteIntent(
+      request,
+      makeDeps({ simulate, reserveNonce }),
+    );
+
+    expect(response.status).toBe("rejected");
+    expect(response.policyCode).toBe("window_too_long");
+    expect(simulate).not.toHaveBeenCalled();
+    expect(reserveNonce).not.toHaveBeenCalled();
+  });
+
   it("does not reserve nonce when simulation fails", async () => {
     const request = makeRequest();
     const reserveNonce = vi.fn(async () => true);

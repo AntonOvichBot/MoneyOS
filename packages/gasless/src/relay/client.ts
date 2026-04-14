@@ -34,6 +34,10 @@ export interface RelayClientOptions {
   headers?: Record<string, string>;
 }
 
+function bigintJsonReplacer(_key: string, value: unknown): unknown {
+  return typeof value === "bigint" ? value.toString() : value;
+}
+
 export class RelayClient {
   private readonly baseUrl: string;
   private readonly fetchFn: typeof fetch;
@@ -51,7 +55,7 @@ export class RelayClient {
   async execute(request: RelayExecuteRequestV1): Promise<RelayExecuteResponseV1> {
     return this.request<RelayExecuteResponseV1>("/v1/execute", {
       method: "POST",
-      body: JSON.stringify(request),
+      body: JSON.stringify(request, bigintJsonReplacer),
     });
   }
 
