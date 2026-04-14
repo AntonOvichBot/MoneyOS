@@ -1,3 +1,4 @@
+import { intentIdempotencyKey } from "../../../../../packages/gasless/src/nonce/lane.js";
 import type { PolicyConfig, PolicyInput } from "../../policy/types.js";
 import { evaluateMoneyOSNativePolicy } from "../../policy/moneyos-native-policy.js";
 
@@ -11,7 +12,7 @@ export interface ExecuteIntentDependencies {
   policy: PolicyConfig;
   relayAddress: string;
   nowSeconds: () => number;
-  reserveNonce: (input: PolicyInput["intent"]) => Promise<boolean>;
+  reserveNonce: (input: PolicyInput["intent"], idempotencyKey?: `0x${string}`) => Promise<boolean>;
   simulate: (input: ExecuteIntentRequest) => Promise<boolean>;
   treasuryGate: (input: ExecuteIntentRequest) => Promise<boolean>;
   walletGate: (input: ExecuteIntentRequest) => Promise<boolean>;
@@ -29,14 +30,23 @@ export async function evaluateExecuteIntent(
   request: ExecuteIntentRequest,
   deps: ExecuteIntentDependencies,
 ): Promise<ExecuteIntentResponse> {
-  const [nonceReserved, simulationPassed, treasuryAllowed, walletAllowed, relayHealthy] =
-    await Promise.all([
-      deps.reserveNonce(request.intent),
-      deps.simulate(request),
-      deps.treasuryGate(request),
-      deps.walletGate(request),
-      deps.relayHealthy(),
-    ]);
+  const submissionId = intentIdempotencyKey({
+    account: request.intent.account as `0x${string}`,
+    sponsor: request.intent.sponsor as `0x${string}`,
+    nonceKey: request.intent.nonceKey,
+    nonceSeq: request.intent.nonceSeq,
+  });
+
+  const [simulationPassed, treasuryAllowed, walletAllowed, relayHealthy] = await Promise.all([
+    deps.simulate(request),
+    deps.treasuryGate(request),
+    deps.walletGate(request),
+    deps.relayHealthy(),
+  ]);
+
+  const nonceReserved = simulationPassed
+    ? await deps.reserveNonce(request.intent, submissionId)
+    : true;
 
   const decision = evaluateMoneyOSNativePolicy(
     {
@@ -64,7 +74,7 @@ export async function evaluateExecuteIntent(
 
   return {
     status: "accepted",
-    submissionId: `${request.intent.account}:${request.intent.nonceKey.toString()}:${request.intent.nonceSeq.toString()}`,
+    submissionId,
     policyCode: decision.code,
   };
 }
