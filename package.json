@@ -16,7 +16,8 @@
     }
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "services/*"
   ],
   "scripts": {
     "build": "npm run build:core && npm run build:gasless && tsup",

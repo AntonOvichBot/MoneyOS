@@ -1,0 +1,22 @@
+{
+  "name": "@moneyos/relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup", 
+    "start": "npm run build && node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@moneyos/gasless": "^0.1.0",
+    "better-sqlite3": "^11.8.1",
+    "fastify": "^5.6.1",
+    "pino": "^9.14.0",
+    "viem": "^2.45.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
+  }
+}
