@@ -15,6 +15,8 @@ import { evaluateMoneyOSNativePolicy } from "../../../services/relay/src/policy/
 import type { PolicyConfig } from "../../../services/relay/src/policy/types.js";
 
 const approveAbi = parseAbi(["function approve(address spender, uint256 amount)"]);
+const transferAbi = parseAbi(["function transfer(address to, uint256 amount)"]);
+const UINT256_MAX = (1n << 256n) - 1n;
 
 const vectors = vectorsJson as {
   ownerPrivateKey: Hex;
@@ -356,5 +358,172 @@ describe("Gasless v1 golden vectors", () => {
 
     expect(decision.ok).toBe(false);
     expect(decision.code).toBe("route_stale");
+  });
+
+  it("11) native-in swap shape is policy-valid", () => {
+    const router = "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa" as Address;
+
+    const nativeSwapIntent: IntentV1 = {
+      account: vectors.intent.account,
+      sponsor: vectors.intent.sponsor,
+      nonceKey: 46n,
+      nonceSeq: 3n,
+      validAfter: 1710000600n,
+      validUntil: 1710000900n,
+      calls: [
+        {
+          target: router,
+          value: 1000000000000000n,
+          data: `0x12345678feedface` as Hex,
+        },
+      ],
+    };
+
+    const policy: PolicyConfig = {
+      policyVersion: "gasless-v1-path-c",
+      chainId: vectors.domain.chainId,
+      relayAddress: vectors.intent.sponsor,
+      maxIntentWindowSeconds: 300,
+      maxRouteAgeSeconds: 300,
+      tokenAllowlist: [],
+      odosRouters: [router],
+      odosSwapSelectors: ["0x12345678"],
+    };
+
+    const decision = evaluateMoneyOSNativePolicy(
+      {
+        nowSeconds: 1710000601,
+        chainId: vectors.domain.chainId,
+        relayAddress: vectors.intent.sponsor,
+        intent: nativeSwapIntent,
+        route: {
+          providerId: "odos",
+          quotedAt: 1710000600,
+          expiresAt: 1710000900,
+          quoteId: "q-native",
+        },
+        nonceReserved: true,
+        simulationPassed: true,
+        treasuryAllowed: true,
+        relayHealthy: true,
+        walletAllowed: true,
+      },
+      policy,
+    );
+
+    expect(decision.ok).toBe(true);
+    expect(decision.flow).toBe("native-swap");
+  });
+
+  it("12) erc20 send shape is policy-valid", () => {
+    const token = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" as Address;
+
+    const erc20SendIntent: IntentV1 = {
+      account: vectors.intent.account,
+      sponsor: vectors.intent.sponsor,
+      nonceKey: 47n,
+      nonceSeq: 4n,
+      validAfter: 1710001000n,
+      validUntil: 1710001300n,
+      calls: [
+        {
+          target: token,
+          value: 0n,
+          data: encodeFunctionData({
+            abi: transferAbi,
+            functionName: "transfer",
+            args: ["0x7777777777777777777777777777777777777777", 2500000n],
+          }),
+        },
+      ],
+    };
+
+    const policy: PolicyConfig = {
+      policyVersion: "gasless-v1-path-c",
+      chainId: vectors.domain.chainId,
+      relayAddress: vectors.intent.sponsor,
+      maxIntentWindowSeconds: 300,
+      maxRouteAgeSeconds: 300,
+      tokenAllowlist: [token],
+      odosRouters: [],
+      odosSwapSelectors: [],
+    };
+
+    const decision = evaluateMoneyOSNativePolicy(
+      {
+        nowSeconds: 1710001001,
+        chainId: vectors.domain.chainId,
+        relayAddress: vectors.intent.sponsor,
+        intent: erc20SendIntent,
+        nonceReserved: true,
+        simulationPassed: true,
+        treasuryAllowed: true,
+        relayHealthy: true,
+        walletAllowed: true,
+      },
+      policy,
+    );
+
+    expect(decision.ok).toBe(true);
+    expect(decision.flow).toBe("erc20-send");
+  });
+
+  it("13) unlimited approve is rejected in erc20 swap shape", () => {
+    const router = "0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa" as Address;
+    const token = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" as Address;
+
+    const swapIntent: IntentV1 = {
+      account: vectors.intent.account,
+      sponsor: vectors.intent.sponsor,
+      nonceKey: 48n,
+      nonceSeq: 5n,
+      validAfter: 1710001400n,
+      validUntil: 1710001700n,
+      calls: [
+        {
+          target: token,
+          value: 0n,
+          data: encodeFunctionData({
+            abi: approveAbi,
+            functionName: "approve",
+            args: [router, UINT256_MAX],
+          }),
+        },
+        {
+          target: router,
+          value: 0n,
+          data: `0x12345678decafbad` as Hex,
+        },
+      ],
+    };
+
+    const policy: PolicyConfig = {
+      policyVersion: "gasless-v1-path-c",
+      chainId: vectors.domain.chainId,
+      relayAddress: vectors.intent.sponsor,
+      maxIntentWindowSeconds: 300,
+      maxRouteAgeSeconds: 300,
+      tokenAllowlist: [token],
+      odosRouters: [router],
+      odosSwapSelectors: ["0x12345678"],
+    };
+
+    const decision = evaluateMoneyOSNativePolicy(
+      {
+        nowSeconds: 1710001401,
+        chainId: vectors.domain.chainId,
+        relayAddress: vectors.intent.sponsor,
+        intent: swapIntent,
+        nonceReserved: true,
+        simulationPassed: true,
+        treasuryAllowed: true,
+        relayHealthy: true,
+        walletAllowed: true,
+      },
+      policy,
+    );
+
+    expect(decision.ok).toBe(false);
+    expect(decision.code).toBe("shape_not_allowed");
   });
 });
