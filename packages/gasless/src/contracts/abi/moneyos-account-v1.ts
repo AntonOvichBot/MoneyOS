@@ -1,0 +1,131 @@
+export const moneyOSAccountV1Abi = [
+  {
+    type: "constructor",
+    stateMutability: "payable",
+    inputs: [{ name: "initialOwner", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "owner",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "deployer",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "setOwner",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "newOwner", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "setAuthorizedKey",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "key", type: "address" },
+      { name: "enabled", type: "bool" },
+      { name: "maxValueWei", type: "uint96" },
+      { name: "validAfter", type: "uint48" },
+      { name: "validUntil", type: "uint48" },
+      { name: "allowedTargets", type: "address[]" },
+      { name: "allowedSelectors", type: "bytes4[]" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "revokeAuthorizedKey",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "key", type: "address" }],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "getNonce",
+    stateMutability: "view",
+    inputs: [
+      { name: "signer", type: "address" },
+      { name: "nonceKey", type: "uint192" },
+    ],
+    outputs: [{ name: "", type: "uint64" }],
+  },
+  {
+    type: "function",
+    name: "isValidSignature",
+    stateMutability: "view",
+    inputs: [
+      { name: "hash", type: "bytes32" },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [{ name: "", type: "bytes4" }],
+  },
+  {
+    type: "function",
+    name: "execute",
+    stateMutability: "payable",
+    inputs: [
+      {
+        name: "intent",
+        type: "tuple",
+        components: [
+          { name: "account", type: "address" },
+          { name: "sponsor", type: "address" },
+          { name: "nonceKey", type: "uint192" },
+          { name: "nonceSeq", type: "uint64" },
+          { name: "validAfter", type: "uint48" },
+          { name: "validUntil", type: "uint48" },
+          {
+            name: "calls",
+            type: "tuple[]",
+            components: [
+              { name: "target", type: "address" },
+              { name: "value", type: "uint256" },
+              { name: "data", type: "bytes" },
+            ],
+          },
+        ],
+      },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [{ name: "results", type: "bytes[]" }],
+  },
+  {
+    type: "function",
+    name: "executeForSponsor",
+    stateMutability: "payable",
+    inputs: [
+      {
+        name: "intent",
+        type: "tuple",
+        components: [
+          { name: "account", type: "address" },
+          { name: "sponsor", type: "address" },
+          { name: "nonceKey", type: "uint192" },
+          { name: "nonceSeq", type: "uint64" },
+          { name: "validAfter", type: "uint48" },
+          { name: "validUntil", type: "uint48" },
+          {
+            name: "calls",
+            type: "tuple[]",
+            components: [
+              { name: "target", type: "address" },
+              { name: "value", type: "uint256" },
+              { name: "data", type: "bytes" },
+            ],
+          },
+        ],
+      },
+      { name: "signature", type: "bytes" },
+      { name: "sponsorCaller", type: "address" }
+    ],
+    outputs: [{ name: "results", type: "bytes[]" }],
+  },
+] as const;
