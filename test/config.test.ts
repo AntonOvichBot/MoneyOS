@@ -17,32 +17,14 @@ import {
   saveConfig,
   type CLIConfig,
 } from "../src/cli/config.js";
+import { installGaslessEnvIsolationHooks } from "./helpers/gasless-env.js";
 
 describe("loadConfig env vars", () => {
-  const envKeys = [
+  installGaslessEnvIsolationHooks([
     "MONEYOS_PRIVATE_KEY",
     "MONEYOS_RPC_URL",
     "MONEYOS_CHAIN_ID",
-    "MONEYOS_GASLESS_ENABLED",
-  ];
-  const saved: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    for (const key of envKeys) {
-      saved[key] = process.env[key];
-      delete process.env[key];
-    }
-  });
-
-  afterEach(() => {
-    for (const key of envKeys) {
-      if (saved[key] !== undefined) {
-        process.env[key] = saved[key];
-      } else {
-        delete process.env[key];
-      }
-    }
-  });
+  ]);
 
   it("MONEYOS_PRIVATE_KEY remains an explicit env override", () => {
     const pk =

@@ -104,11 +104,12 @@ export async function buildCliMoneyOSConfig(
     chainId: options.chainId ?? config.chainId ?? 42161,
     rpcUrl: config.rpcUrl,
   };
-  const gasless = resolveGaslessExecutionConfig(config);
 
   if (!options.requireSigner) {
     return moneyosConfig;
   }
+
+  const gasless = resolveGaslessExecutionConfig(config);
 
   const envPrivateKey = resolveEnvPrivateKey(options.envPrivateKey);
   if (envPrivateKey) {
