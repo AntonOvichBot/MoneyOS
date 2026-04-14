@@ -19,6 +19,9 @@ export interface CLIConfig {
   rpcUrl?: string;
   walletPath?: string;
   backupDir?: string;
+  gasless?: {
+    enabled?: boolean;
+  };
   /**
    * Legacy plaintext wallet field from earlier MoneyOS versions. This should
    * never be written by the current CLI.
@@ -85,8 +88,31 @@ export function loadConfig(): CLIConfig {
     }
     config.chainId = parsed;
   }
+  if (process.env.MONEYOS_GASLESS_ENABLED !== undefined) {
+    config.gasless = {
+      ...config.gasless,
+      enabled: parseBooleanEnv(
+        process.env.MONEYOS_GASLESS_ENABLED,
+        "MONEYOS_GASLESS_ENABLED",
+      ),
+    };
+  }
 
   return config;
+}
+
+export function parseBooleanEnv(value: string, key: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  throw new Error(
+    `Invalid ${key}: "${value}" — expected true/false, 1/0, yes/no, or on/off`,
+  );
 }
 
 /**

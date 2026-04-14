@@ -1,6 +1,7 @@
 import type { MoneyOSConfig } from "@moneyos/core";
 import type { Address, Hex } from "viem";
 import { FileEncryptedWalletStore } from "../core/encrypted-wallet.js";
+import { createGaslessExecutionClient } from "../core/gasless.js";
 import { privateKeyToManagedAccount } from "../core/signer.js";
 import {
   getLegacyPlaintextWalletStorageMessage,
@@ -13,6 +14,7 @@ import {
   type CLIConfig,
 } from "./config.js";
 import { connectLocalSession } from "../local-session.js";
+import { resolveGaslessExecutionConfig } from "./gasless.js";
 
 export type CliWalletBackendKind = "env" | "wallet-file" | "session";
 
@@ -107,11 +109,26 @@ export async function buildCliMoneyOSConfig(
     return moneyosConfig;
   }
 
+  const gasless = resolveGaslessExecutionConfig(config);
+
   const envPrivateKey = resolveEnvPrivateKey(options.envPrivateKey);
   if (envPrivateKey) {
+    const signer = privateKeyToManagedAccount(envPrivateKey);
+    if (!gasless) {
+      return {
+        ...moneyosConfig,
+        signer,
+      };
+    }
+
     return {
       ...moneyosConfig,
-      signer: privateKeyToManagedAccount(envPrivateKey),
+      execute: createGaslessExecutionClient({
+        signer,
+        chainId: moneyosConfig.chainId,
+        rpcUrl: moneyosConfig.rpcUrl,
+        gasless,
+      }),
     };
   }
 
@@ -122,14 +139,31 @@ export async function buildCliMoneyOSConfig(
   const socketPath = getSessionPath(options);
   const tokenPath = getTokenPath(options);
   try {
+    const sessionExecute = await connectLocalSession({
+      socketPath,
+      tokenPath,
+    });
+
+    if (gasless && sessionExecute.mode !== "smart-account") {
+      throw new Error(
+        "Gasless mode is enabled, but the active wallet session is still using the EOA executor. Run `moneyos auth unlock` again.",
+      );
+    }
+
+    if (!gasless && sessionExecute.mode === "smart-account") {
+      throw new Error(
+        "Gasless mode is disabled, but the active wallet session is still gasless. Run `moneyos auth unlock` again.",
+      );
+    }
+
     return {
       ...moneyosConfig,
-      execute: await connectLocalSession({
-        socketPath,
-        tokenPath,
-      }),
+      execute: sessionExecute,
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && /active wallet session is still/.test(error.message)) {
+      throw error;
+    }
     // Fall through so the CLI preserves the current locked-wallet error path.
   }
 

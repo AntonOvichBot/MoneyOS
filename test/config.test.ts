@@ -17,31 +17,14 @@ import {
   saveConfig,
   type CLIConfig,
 } from "../src/cli/config.js";
+import { installGaslessEnvIsolationHooks } from "./helpers/gasless-env.js";
 
 describe("loadConfig env vars", () => {
-  const envKeys = [
+  installGaslessEnvIsolationHooks([
     "MONEYOS_PRIVATE_KEY",
     "MONEYOS_RPC_URL",
     "MONEYOS_CHAIN_ID",
-  ];
-  const saved: Record<string, string | undefined> = {};
-
-  beforeEach(() => {
-    for (const key of envKeys) {
-      saved[key] = process.env[key];
-      delete process.env[key];
-    }
-  });
-
-  afterEach(() => {
-    for (const key of envKeys) {
-      if (saved[key] !== undefined) {
-        process.env[key] = saved[key];
-      } else {
-        delete process.env[key];
-      }
-    }
-  });
+  ]);
 
   it("MONEYOS_PRIVATE_KEY remains an explicit env override", () => {
     const pk =
@@ -67,6 +50,21 @@ describe("loadConfig env vars", () => {
     process.env.MONEYOS_CHAIN_ID = "abc";
     expect(() => loadConfig()).toThrow('Invalid MONEYOS_CHAIN_ID: "abc"');
   });
+
+  it("MONEYOS_GASLESS_ENABLED accepts boolean-ish values", () => {
+    process.env.MONEYOS_GASLESS_ENABLED = "true";
+    const enabled = loadConfig();
+    expect(enabled.gasless?.enabled).toBe(true);
+
+    process.env.MONEYOS_GASLESS_ENABLED = "0";
+    const disabled = loadConfig();
+    expect(disabled.gasless?.enabled).toBe(false);
+  });
+
+  it("MONEYOS_GASLESS_ENABLED rejects invalid values", () => {
+    process.env.MONEYOS_GASLESS_ENABLED = "maybe";
+    expect(() => loadConfig()).toThrow('Invalid MONEYOS_GASLESS_ENABLED: "maybe"');
+  });
 });
 
 describe("CLIConfig file schema", () => {
@@ -88,6 +86,9 @@ describe("CLIConfig file schema", () => {
       rpcUrl: "https://arb1.arbitrum.io/rpc",
       walletPath: join(tmpDir, "wallet.json"),
       backupDir: join(tmpDir, "backups"),
+      gasless: {
+        enabled: true,
+      },
     };
     saveConfig(config, configPath);
 

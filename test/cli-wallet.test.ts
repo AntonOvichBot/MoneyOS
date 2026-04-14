@@ -11,6 +11,10 @@ import {
 } from "../src/cli/wallet.js";
 import { startSessionServer } from "../src/cli/session.js";
 import type { CLIConfig } from "../src/cli/config.js";
+import {
+  installGaslessEnvIsolationHooks,
+  setDefaultGaslessEnv,
+} from "./helpers/gasless-env.js";
 
 const TEST_PK: Hex =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -18,6 +22,8 @@ const ALT_PK: Hex =
   "0x59c6995e998f97a5a0044966f094538e6f2f0a38d7c7d0b7e54b5f3c7f4e6a15";
 const TEST_ADDRESS = privateKeyToAccount(TEST_PK).address;
 const ALT_ADDRESS = privateKeyToAccount(ALT_PK).address;
+
+installGaslessEnvIsolationHooks();
 
 function makeSocketPath(prefix: string): string {
   const baseDir = mkdtempSync(join(tmpdir(), `${prefix}-`));
@@ -45,6 +51,26 @@ describe("buildCliMoneyOSConfig", () => {
     });
   });
 
+  it("skips gasless env resolution for read-only calls", async () => {
+    process.env.MONEYOS_GASLESS_ENABLED = "true";
+
+    await expect(
+      buildCliMoneyOSConfig(
+        {
+          chainId: 42161,
+          rpcUrl: "https://arb1.arbitrum.io/rpc",
+          gasless: { enabled: true },
+        },
+        {
+          requireSigner: false,
+        },
+      ),
+    ).resolves.toEqual({
+      chainId: 42161,
+      rpcUrl: "https://arb1.arbitrum.io/rpc",
+    });
+  });
+
   it("uses MONEYOS_PRIVATE_KEY-style input before any local wallet state", async () => {
     const result = await buildCliMoneyOSConfig(
       { chainId: 42161 },
@@ -57,6 +83,38 @@ describe("buildCliMoneyOSConfig", () => {
     expect(result.chainId).toBe(42161);
     expect(result.signer?.address).toBe(ALT_ADDRESS);
     expect(result.execute).toBeUndefined();
+  });
+
+  it("builds a gasless executor when gasless mode is enabled", async () => {
+    setDefaultGaslessEnv();
+
+    const result = await buildCliMoneyOSConfig(
+      {
+        chainId: 42161,
+        gasless: { enabled: true },
+      },
+      {
+        requireSigner: true,
+        envPrivateKey: ALT_PK,
+      },
+    );
+
+    expect(result.signer).toBeUndefined();
+    expect(result.execute?.mode).toBe("smart-account");
+  });
+
+  it("fails fast when gasless mode is enabled but runtime env is missing", async () => {
+    process.env.MONEYOS_GASLESS_ENABLED = "true";
+
+    await expect(
+      buildCliMoneyOSConfig(
+        { chainId: 42161, gasless: { enabled: true } },
+        {
+          requireSigner: true,
+          envPrivateKey: ALT_PK,
+        },
+      ),
+    ).rejects.toThrow(/missing required environment variables/i);
   });
 
   it("attaches a local session executor when unlocked", async () => {
@@ -87,6 +145,41 @@ describe("buildCliMoneyOSConfig", () => {
 
       expect(result.execute?.getAddress()).toBe(TEST_ADDRESS);
       expect(result.signer).toBeUndefined();
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it("throws if gasless is enabled but the active session is still EOA", async () => {
+    setDefaultGaslessEnv();
+
+    const baseDir = makeSocketPath("moneyos-session-gasless-mismatch");
+    const socketPath =
+      process.platform === "win32"
+        ? `\\\\.\\pipe\\moneyos-session-gasless-mismatch-${Date.now()}`
+        : join(baseDir, "session.sock");
+    const tokenPath = join(baseDir, "session.token");
+    const handle = await startSessionServer({
+      type: "start",
+      privateKey: TEST_PK,
+      chainId: 42161,
+      socketPath,
+      tokenPath,
+      ttlMs: 1000,
+    });
+
+    try {
+      await expect(
+        buildCliMoneyOSConfig(
+          { chainId: 42161, gasless: { enabled: true } },
+          {
+            requireSigner: true,
+            sessionSocketPath: socketPath,
+            sessionTokenPath: tokenPath,
+          },
+        ),
+      ).rejects.toThrow(/active wallet session is still using the EOA executor/i);
     } finally {
       await handle.close();
       rmSync(baseDir, { recursive: true, force: true });
