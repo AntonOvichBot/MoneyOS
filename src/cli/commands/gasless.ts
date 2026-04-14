@@ -50,6 +50,18 @@ async function runGaslessToggle(enabled: boolean): Promise<void> {
     );
   }
 
+  if (enabled) {
+    const missing = Object.entries(getGaslessRequiredEnvPresence())
+      .filter(([, present]) => !present)
+      .map(([key]) => key);
+
+    if (missing.length > 0) {
+      console.log(
+        `Warning: gasless is enabled, but these env vars are still missing: ${missing.join(", ")}.`,
+      );
+    }
+  }
+
   await refreshSessionAfterToggle();
 }
 

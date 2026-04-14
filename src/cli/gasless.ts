@@ -1,6 +1,6 @@
 import type { Address } from "viem";
 import type { GaslessExecutionConfig } from "../core/gasless.js";
-import type { CLIConfig } from "./config.js";
+import { parseBooleanEnv, type CLIConfig } from "./config.js";
 
 const GASLESS_ENABLED_ENV = "MONEYOS_GASLESS_ENABLED";
 const GASLESS_RELAY_URL_ENV = "MONEYOS_GASLESS_RELAY_URL";
@@ -11,20 +11,6 @@ const GASLESS_VALIDITY_WINDOW_ENV = "MONEYOS_GASLESS_VALIDITY_WINDOW_SECONDS";
 
 interface EnvLike {
   [key: string]: string | undefined;
-}
-
-function parseBooleanEnv(value: string, key: string): boolean {
-  const normalized = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) {
-    return true;
-  }
-  if (["0", "false", "no", "off"].includes(normalized)) {
-    return false;
-  }
-
-  throw new Error(
-    `Invalid ${key}: "${value}" — expected true/false, 1/0, yes/no, or on/off`,
-  );
 }
 
 function parseAddress(value: string, key: string): Address {

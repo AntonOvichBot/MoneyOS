@@ -101,7 +101,7 @@ export function loadConfig(): CLIConfig {
   return config;
 }
 
-function parseBooleanEnv(value: string, key: string): boolean {
+export function parseBooleanEnv(value: string, key: string): boolean {
   const normalized = value.trim().toLowerCase();
   if (["1", "true", "yes", "on"].includes(normalized)) {
     return true;
