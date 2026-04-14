@@ -57,6 +57,9 @@ describe("relay app", () => {
     const rateLimit = buildRateLimit(5, 20, 2000);
     const walletOptions = { db, rateLimit, nowSeconds };
     const treasuryOptions = { db, rateLimit, nowSeconds };
+    const submitIntent = vi.fn(async () => ({
+      txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const,
+    }));
 
     const app = buildRelayApp({
       policy,
@@ -70,9 +73,7 @@ describe("relay app", () => {
       walletGate: createWalletGate(walletOptions),
       relayHealthy: async () => true,
       submissionAdapter: {
-        submitIntent: async () => ({
-          txHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        }),
+        submitIntent,
         stop: () => {},
       },
       onSubmissionAccepted: (request) => {
@@ -104,6 +105,7 @@ describe("relay app", () => {
       status: "submitted",
       submissionId: executeBody.submissionId,
     });
+    expect(submitIntent).toHaveBeenCalledTimes(1);
 
     const txResponse = await app.inject({
       method: "GET",

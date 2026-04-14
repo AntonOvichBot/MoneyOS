@@ -197,6 +197,19 @@ export function buildRelayApp(deps: RelayAppDependencies): FastifyInstance {
       };
     }
 
+    const existingSubmission = deps.db.getSubmission(decision.submissionId);
+    if (
+      existingSubmission &&
+      (existingSubmission.status === "submitted" || existingSubmission.status === "confirmed") &&
+      existingSubmission.txHash
+    ) {
+      return {
+        submissionId: existingSubmission.id,
+        status: existingSubmission.status,
+        txHash: existingSubmission.txHash,
+      };
+    }
+
     try {
       const submission = await deps.submissionAdapter.submitIntent({
         submissionId: decision.submissionId,

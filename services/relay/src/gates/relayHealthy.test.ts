@@ -56,4 +56,24 @@ describe("createRelayHealthyGate", () => {
 
     await expect(gate()).resolves.toBe(false);
   });
+
+  it("returns false when the RPC health check times out", async () => {
+    const gate = createRelayHealthyGate({
+      expectedChainId: 42161,
+      sponsorAddress: "0x1111111111111111111111111111111111111111",
+      minimumSponsorBalanceWei: 500n,
+      autoRefillThresholdWei: 2000n,
+      timeoutMs: 10,
+      client: {
+        getChainId: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          return 42161;
+        },
+        getBlockNumber: async () => 1n,
+        getBalance: async () => 10_000n,
+      },
+    });
+
+    await expect(gate()).resolves.toBe(false);
+  });
 });
