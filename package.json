@@ -68,6 +68,9 @@
     "viem": "^2.45.1",
     "@moneyos/gasless": "^0.1.0"
   },
+  "bundleDependencies": [
+    "@moneyos/gasless"
+  ],
   "moneyos": {
     "toolHomeDependencies": {
       "@moneyos/core": "^0.1.0"
