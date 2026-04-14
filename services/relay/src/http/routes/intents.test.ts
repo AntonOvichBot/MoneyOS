@@ -119,6 +119,20 @@ describe("evaluateExecuteIntent", () => {
     expect(response.policyCode).toBe("simulation_failed");
   });
 
+  it("rejects when nonce reservation fails", async () => {
+    const request = makeRequest();
+
+    const response = await evaluateExecuteIntent(
+      request,
+      makeDeps({
+        reserveNonce: async () => false,
+      }),
+    );
+
+    expect(response.status).toBe("rejected");
+    expect(response.policyCode).toBe("nonce_not_reserved");
+  });
+
   it("uses intent idempotency key for reservation and submission id", async () => {
     const request = makeRequest();
     const expectedId = intentIdempotencyKey({

@@ -1,0 +1,21 @@
+[Unit]
+Description=MoneyOS Relay Service
+After=network.target
+
+[Service]
+Type=simple
+User=moneyos
+Group=moneyos
+WorkingDirectory=/opt/moneyos-repo
+EnvironmentFile=/etc/moneyos/relay.env
+ExecStart=/usr/bin/npm run start --workspace=services/relay
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/moneyos-relay
+
+[Install]
+WantedBy=multi-user.target

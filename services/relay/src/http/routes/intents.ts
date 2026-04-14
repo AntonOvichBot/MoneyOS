@@ -21,7 +21,7 @@ export interface ExecuteIntentDependencies {
 
 export interface ExecuteIntentResponse {
   status: "accepted" | "rejected";
-  submissionId?: string;
+  submissionId: string;
   reason?: string;
   policyCode?: string;
 }
@@ -59,6 +59,7 @@ export async function evaluateExecuteIntent(
   if (!preflight.ok) {
     return {
       status: "rejected",
+      submissionId,
       reason: preflight.reason,
       policyCode: preflight.code,
     };
@@ -94,6 +95,7 @@ export async function evaluateExecuteIntent(
   if (!decision.ok) {
     return {
       status: "rejected",
+      submissionId,
       reason: decision.reason,
       policyCode: decision.code,
     };
