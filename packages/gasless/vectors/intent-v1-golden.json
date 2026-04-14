@@ -1,0 +1,36 @@
+{
+  "ownerPrivateKey": "0x59c6995e998f97a5a0044966f094538e5e53f8f8f4f5f6f0f2d7d7f6f3a5b6c7",
+  "authorizedPrivateKey": "0x8b3a350cf5c34c9194ca3a545d5af8578f8f7d4f4f4f4f4f4f4f4f4f4f4f4f4f",
+  "domain": {
+    "chainId": 42161,
+    "verifyingContract": "0x1111111111111111111111111111111111111111"
+  },
+  "intent": {
+    "account": "0x1111111111111111111111111111111111111111",
+    "sponsor": "0x2222222222222222222222222222222222222222",
+    "nonceKey": "7",
+    "nonceSeq": "3",
+    "validAfter": "1710000000",
+    "validUntil": "1710000300",
+    "calls": [
+      {
+        "target": "0x3333333333333333333333333333333333333333",
+        "value": "123456789000000",
+        "data": "0x"
+      }
+    ]
+  },
+  "create2": {
+    "factory": "0xfAc7000000000000000000000000000000000000",
+    "salt": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "initCodeHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "expected": {
+    "digest": "0x371dd330d830b05908d5288d25d27fcdff3228919c2be9cca13d4d81a1776ff0",
+    "ownerAddress": "0xFfAE9dc2834Ff2A750E50d4bFe3d44D76E6cAC4f",
+    "ownerSignature": "0x9e24e5d53b2fbc091aa4840d0cb6225d6ebeb9491039e6a5c1be2ee552de6bb604306db8acbb49e7c86f355c451e37a7d51b78fb43aa83e69bde4a72b53aabdd1c",
+    "authorizedAddress": "0x8092770AFe5547a518F032637Ba7F45e868d43c4",
+    "authorizedSignature": "0x8991771620d89f9d2fbc5126589a7d36ef72d3a6baaf9e6ea0be8e41bc6c914631d16567ad71c7b452c362be5f6d0bf1006f683b3a2d5aaa27ba3ce69d1d273b1b",
+    "create2Address": "0x39de1928F9EA4e49FA3f39bd4C851134A251a498"
+  }
+}

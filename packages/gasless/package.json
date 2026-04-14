@@ -1,0 +1,43 @@
+{
+  "name": "@moneyos/gasless",
+  "version": "0.1.0",
+  "description": "Gasless smart-account contracts and SDK helpers for MoneyOS Path C",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:vectors": "vitest run test/intent-v1-vectors.test.ts",
+    "test:contracts": "forge test"
+  },
+  "keywords": ["moneyos", "gasless", "smart-account", "intent"],
+  "author": "Aryze",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/1231CheGites/MoneyOS.git",
+    "directory": "packages/gasless"
+  },
+  "homepage": "https://github.com/1231CheGites/MoneyOS/tree/main/packages/gasless",
+  "bugs": {
+    "url": "https://github.com/1231CheGites/MoneyOS/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": ["dist", "contracts", "vectors", "CHANGELOG.md"],
+  "peerDependencies": {
+    "@moneyos/core": "^0.1.0",
+    "viem": "^2.0.0"
+  }
+}
