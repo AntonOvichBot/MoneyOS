@@ -108,13 +108,13 @@ describe("buildCliMoneyOSConfig", () => {
 
     await expect(
       buildCliMoneyOSConfig(
-        { chainId: 42161, gasless: { enabled: true } },
+        { chainId: 11155111, gasless: { enabled: true } },
         {
           requireSigner: true,
           envPrivateKey: ALT_PK,
         },
       ),
-    ).rejects.toThrow(/missing required environment variables/i);
+    ).rejects.toThrow(/required environment variables are missing/i);
   });
 
   it("attaches a local session executor when unlocked", async () => {

@@ -18,9 +18,14 @@ export const gaslessEnvVarNames = {
   sponsor: GASLESS_SPONSOR_ENV,
 } as const;
 
+function parseGaslessEnabledEnv(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
 export function isGaslessEnabled(config: CLIConfig): boolean {
   if (typeof process.env[GASLESS_ENABLED_ENV] === "string") {
-    return process.env[GASLESS_ENABLED_ENV] === "1";
+    return parseGaslessEnabledEnv(process.env[GASLESS_ENABLED_ENV]);
   }
 
   return config.gasless?.enabled === true;

@@ -120,6 +120,11 @@ export async function buildCliMoneyOSConfig(
       rpcUrl: moneyosConfig.rpcUrl,
     });
     if (!gasless) {
+      if (gaslessEnabled) {
+        throw new Error(
+          "Gasless mode is enabled but required environment variables are missing. Set MONEYOS_GASLESS_RELAY_URL, MONEYOS_GASLESS_ACCOUNT, and MONEYOS_GASLESS_SPONSOR.",
+        );
+      }
       return {
         ...moneyosConfig,
         signer,
