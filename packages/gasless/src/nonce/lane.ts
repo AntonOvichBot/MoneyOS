@@ -25,6 +25,9 @@ export function nonceLaneReservationKey(params: NonceLaneKey): Hex {
   );
 }
 
+// Intentionally signer-agnostic in owner-only v1 relay path: replay protection is keyed by
+// (account, sponsor, nonce lane). TODO(path-c): include signer once delegated-signer relay
+// submissions are enabled so same nonce tuple cannot be replayed across signer classes.
 export function intentIdempotencyKey(params: IntentReservationKey): Hex {
   return keccak256(
     encodeAbiParameters(

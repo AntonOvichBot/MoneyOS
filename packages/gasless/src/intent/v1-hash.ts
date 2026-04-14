@@ -3,9 +3,7 @@ import {
   encodeAbiParameters,
   hashTypedData,
   keccak256,
-  pad,
   toBytes,
-  type Address,
   type Hex,
 } from "viem";
 import {
@@ -156,10 +154,3 @@ export function selectorFromCalldata(data: Hex): Hex {
   return data.slice(0, 10) as Hex;
 }
 
-export function toBytes32(value: bigint): Hex {
-  return pad(`0x${value.toString(16)}`, { size: 32 });
-}
-
-export function normalizeAddress(value: Address): Address {
-  return value;
-}

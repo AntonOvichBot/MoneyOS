@@ -308,27 +308,6 @@ contract MoneyOSAccountV1 {
         }
     }
 
-    function _isSignerActive(address signer) internal view returns (bool) {
-        if (signer == owner) {
-            return true;
-        }
-
-        KeyScope memory scope = _keyScopes[signer];
-        if (!scope.enabled) {
-            return false;
-        }
-
-        uint256 ts = block.timestamp;
-        if (ts < scope.validAfter) {
-            return false;
-        }
-        if (scope.validUntil != 0 && ts > scope.validUntil) {
-            return false;
-        }
-
-        return true;
-    }
-
     function _selectorFromCallData(bytes calldata data) internal pure returns (bytes4 selector) {
         if (data.length < 4) {
             return bytes4(0);
