@@ -21,6 +21,9 @@ export interface CLIConfig {
   backupDir?: string;
   gasless?: {
     enabled?: boolean;
+    relayUrl?: string;
+    account?: string;
+    sponsor?: string;
   };
   /**
    * Legacy plaintext wallet field from earlier MoneyOS versions. This should

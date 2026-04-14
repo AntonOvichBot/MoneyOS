@@ -22,6 +22,13 @@ export {
   createIntentV1SignedPayload,
 } from "./intent/v1-sign.js";
 export { nonceLaneReservationKey, intentIdempotencyKey } from "./nonce/lane.js";
+export {
+  ARBITRUM_MAINNET_GASLESS_DEFAULTS,
+  getGaslessNetworkDefaults,
+  deriveDefaultGaslessAccount,
+  MONEYOS_GASLESS_ACCOUNT_FACTORY_SALT,
+} from "./defaults.js";
+export type { GaslessNetworkDefaults } from "./defaults.js";
 export { moneyOSAccountV1Abi } from "./contracts/abi/moneyos-account-v1.js";
 export { moneyOSAccountFactoryV1Abi } from "./contracts/abi/moneyos-account-factory-v1.js";
 export {

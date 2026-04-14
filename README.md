@@ -92,13 +92,15 @@ moneyos gasless disable
 moneyos auth unlock
 ```
 
-Gasless execution currently requires these environment variables:
+On Arbitrum One v1, `moneyos gasless enable` now bakes in the public relay URL, sponsor, and factory-derived smart-account address automatically. Manual overrides still exist through these environment variables:
 
 - `MONEYOS_GASLESS_RELAY_URL`
 - `MONEYOS_GASLESS_ACCOUNT`
 - `MONEYOS_GASLESS_SPONSOR`
 - optional: `MONEYOS_GASLESS_NONCE_KEY`
 - optional: `MONEYOS_GASLESS_VALIDITY_WINDOW_SECONDS`
+
+Important bootstrap note: this is gasless execution, not gasless onboarding. The relay sponsors gas, but it does not sponsor transfer value. A brand-new user still has to fund the smart account with actual assets first, for example USDC, ETH, WETH, or RYZE on Arbitrum One, before a gasless send can succeed.
 
 ## SDK
 
