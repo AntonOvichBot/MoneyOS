@@ -59,6 +59,39 @@ export const moneyOSAccountV1Abi = [
   },
   {
     type: "function",
+    name: "getKeyScope",
+    stateMutability: "view",
+    inputs: [{ name: "key", type: "address" }],
+    outputs: [
+      { name: "enabled", type: "bool" },
+      { name: "maxValueWei", type: "uint96" },
+      { name: "validAfter", type: "uint48" },
+      { name: "validUntil", type: "uint48" },
+      { name: "epoch", type: "uint64" },
+    ],
+  },
+  {
+    type: "function",
+    name: "isTargetAllowed",
+    stateMutability: "view",
+    inputs: [
+      { name: "key", type: "address" },
+      { name: "target", type: "address" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "isSelectorAllowed",
+    stateMutability: "view",
+    inputs: [
+      { name: "key", type: "address" },
+      { name: "selector", type: "bytes4" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
     name: "isValidSignature",
     stateMutability: "view",
     inputs: [
@@ -124,7 +157,7 @@ export const moneyOSAccountV1Abi = [
         ],
       },
       { name: "signature", type: "bytes" },
-      { name: "sponsorCaller", type: "address" }
+      { name: "sponsorCaller", type: "address" },
     ],
     outputs: [{ name: "results", type: "bytes[]" }],
   },

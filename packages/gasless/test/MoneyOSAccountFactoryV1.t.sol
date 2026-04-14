@@ -10,6 +10,7 @@ interface Vm {
     function sign(uint256 privateKey, bytes32 digest) external returns (uint8 v, bytes32 r, bytes32 s);
     function prank(address newSender) external;
     function deal(address account, uint256 newBalance) external;
+    function expectRevert(bytes4) external;
 }
 
 address constant HEVM_ADDRESS = address(uint160(uint256(keccak256("hevm cheat code"))));
@@ -80,6 +81,11 @@ contract MoneyOSAccountFactoryV1Test {
 
         require(predicted == deployed, "create2 prediction mismatch");
         require(factory.deployAccount(owner, salt) == deployed, "deploy should be idempotent");
+    }
+
+    function testComputeAddressRevertsForZeroOwner() public {
+        vm.expectRevert(MoneyOSAccountFactoryV1.InvalidOwner.selector);
+        factory.computeAccountAddress(address(0), keccak256("invalid-owner"));
     }
 
     function testDeployAndExecuteNativeSend() public {

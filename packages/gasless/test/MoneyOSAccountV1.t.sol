@@ -331,6 +331,25 @@ contract MoneyOSAccountV1Test {
         account.execute(intent, signature);
     }
 
+    function testExecuteRejectsEmptyCalls() public {
+        IIntentTypesV1.Call[] memory calls = new IIntentTypesV1.Call[](0);
+        IIntentTypesV1.IntentV1 memory intent = IIntentTypesV1.IntentV1({
+            account: address(account),
+            sponsor: sponsor,
+            nonceKey: 0,
+            nonceSeq: 0,
+            validAfter: uint48(block.timestamp),
+            validUntil: uint48(block.timestamp + 300),
+            calls: calls
+        });
+
+        bytes memory signature = _signIntent(OWNER_PK, intent);
+
+        vm.expectRevert(MoneyOSAccountV1.EmptyCalls.selector);
+        vm.prank(sponsor);
+        account.execute(intent, signature);
+    }
+
     function _singleCallIntent(
         address target,
         uint256 value,
