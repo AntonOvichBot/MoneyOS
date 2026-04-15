@@ -1,6 +1,9 @@
 # Gasless V1 Implementation Plan
 
-Status: planning draft
+Status: historical planning document for the landed gasless v1 path.
+
+For current shipped behavior, start with `README.md`, `docs/architecture.md`, and the code under `packages/gasless/` and `services/relay/`.
+
 Depends on: `docs/adr-gasless-v1.md`
 
 ## Goal

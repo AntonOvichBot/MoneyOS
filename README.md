@@ -12,7 +12,9 @@ but the repo is structured so each major surface can evolve independently.
 
 - `moneyos`: the root SDK + CLI package for runtime, wallet, balance, and send
 - `@moneyos/core`: runtime interfaces, shared types, chain/token registries
+- `@moneyos/gasless`: smart-account contracts, intent helpers, gasless executor, relay client, and baked Arbitrum defaults
 - `@moneyos/swap`: canonical swap package and Odos provider, published on npm
+- `services/relay`: the hosted relay service that sponsors gas for the gasless path
 
 Current package-boundary rules live in [`docs/architecture.md`](docs/architecture.md).
 
@@ -77,6 +79,18 @@ moneyos swap 0.1 RYZE ETH
 
 Gasless is available but default-off in v1.
 
+Gasless changes execution mode. It does not replace or convert the imported
+wallet.
+
+Mental model:
+
+- your imported private key remains the owner EOA
+- `moneyos gasless enable` derives and stores a separate deterministic smart-account address for that owner
+- with the baked network defaults, the same owner derives the same smart-account address on a given chain, so the mapping is recoverable from the owner key alone
+- after the next `moneyos auth unlock`, write commands execute from the smart account instead of the owner EOA
+- balances do not move automatically between the owner EOA and the smart account
+- the relay sponsors gas only; the smart account still needs the asset being sent or swapped
+
 ```bash
 moneyos gasless status
 moneyos gasless enable
@@ -101,6 +115,21 @@ On Arbitrum One v1, `moneyos gasless enable` now bakes in the public relay URL, 
 - optional: `MONEYOS_GASLESS_VALIDITY_WINDOW_SECONDS`
 
 Important bootstrap note: this is gasless execution, not gasless onboarding. The relay sponsors gas, but it does not sponsor transfer value. A brand-new user still has to fund the smart account with actual assets first, for example USDC, ETH, WETH, or RYZE on Arbitrum One, before a gasless send can succeed.
+
+If you already have funds in the owner EOA, the practical flow is:
+
+1. have an initialized wallet (`moneyos init` or `moneyos init --key 0x...`) and unlock it with `moneyos auth unlock`
+2. run `moneyos balance --all` to inspect the owner EOA balance
+3. run `moneyos gasless enable`, then `moneyos auth unlock`
+4. run `moneyos auth status` to see the active smart-account address
+5. fund that smart-account address from the owner EOA or another wallet
+6. run `moneyos balance --all --address <smart-account-address>` to inspect smart-account funds
+7. retry the gasless send or swap
+
+Note: `moneyos balance` without `--address` still shows the owner EOA balance,
+even when gasless mode is active. Use `moneyos auth status` to get the active
+smart-account address, then pass that address with `--address` to inspect
+smart-account funds.
 
 ## SDK
 
@@ -211,6 +240,8 @@ Published packages:
 - `@moneyos/core`
 - `@moneyos/swap`
 
+`@moneyos/gasless` exists in this repo but is not published to npm yet.
+
 Current `moneyos` releases no longer bundle swap into the root SDK or CLI. If
 you want swap from the root CLI, install `moneyos` and then run
 `moneyos add swap`.
@@ -221,6 +252,7 @@ What is landed in code today:
 
 - The CLI stores the root wallet in an encrypted local wallet file at `~/.moneyos/wallet.json`
 - `~/.moneyos/config.json` now stores only non-secret settings such as chain and RPC configuration
+- `moneyos gasless enable` keeps that encrypted wallet as the owner EOA and stores a separate smart-account config for gasless execution
 - `MONEYOS_PRIVATE_KEY` remains an explicit override for ephemeral CI or agent runs
 - `moneyos auth unlock` opens a short-lived local session for write commands
 - workflow scripts can attach to that unlocked session with `connectLocalSession()`
@@ -256,6 +288,10 @@ MoneyOS prompts you for a wallet password, encrypts the key into
 `~/.moneyos/wallet.json`, and writes an initial encrypted backup under
 `~/.moneyos/backups/`. After that, use `moneyos auth unlock` before any
 write command.
+
+Importing a raw private key keeps that address as the owner EOA. If you later
+enable gasless, MoneyOS derives a separate smart-account address from that
+owner key; it does not convert the imported EOA or move its assets.
 
 The CLI only supports raw hex private-key import today. Seed phrases,
 keystore v3 JSON files, and hardware-wallet derivation are not implemented.

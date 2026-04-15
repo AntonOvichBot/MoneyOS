@@ -1,12 +1,16 @@
 # @moneyos/gasless
 
-Gasless Path C package for MoneyOS v1.
+Repo workspace for the MoneyOS gasless smart-account lane.
 
 This package contains:
+
 - Solidity contracts for `MoneyOSAccountV1` and `MoneyOSAccountFactoryV1`
 - Intent hash/signing helpers for `IntentV1`
-- Golden vectors for intent hash and signatures
-- A gasless executor + relay client skeleton aligned with the v1 trust boundary
+- Address-derivation helpers and baked Arbitrum defaults
+- A gasless executor and relay client used by the root SDK and CLI
+- Golden vectors and focused tests for the account/auth surface
+
+This package is in the repo today but is not published to npm yet.
 
 ## Tooling
 

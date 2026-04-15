@@ -1,6 +1,9 @@
 # Gasless V1 Spec Freeze
 
-Status: planning freeze before first code
+Status: historical design freeze used for the first landed gasless v1 implementation.
+
+For current shipped behavior, start with `README.md` and `docs/architecture.md`.
+
 Depends on:
 - `docs/adr-gasless-v1.md`
 - `docs/gasless-v1-implementation-plan.md`

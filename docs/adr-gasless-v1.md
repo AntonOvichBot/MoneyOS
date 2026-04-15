@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed.
+Accepted and implemented for the v1 send-first gasless path on `main`.
 
 ## Decision
 

@@ -35,7 +35,7 @@ It owns:
 - encrypted local wallet, session, and backup flows
 - workflow-author helpers that attach to an already-unlocked local session
 - the root CLI surface, including `init`, `auth`, `backup`, `balance`,
-  `send`, and `keystore`
+  `send`, `gasless`, and `keystore`
 - the `moneyos.runtime` seam that external tools execute against
 - compatibility re-exports from `@moneyos/core`
 
@@ -50,6 +50,51 @@ It must not own:
 
 Rule: the root package should stay boring. If a feature can live as a separate
 tool package, keep it out of root.
+
+## Gasless package
+
+`@moneyos/gasless` is the shared smart-account and relay-integration package.
+
+It owns:
+
+- smart-account and factory contracts
+- intent hashing and signing helpers
+- account derivation helpers and baked network defaults
+- the gasless executor used by the root package
+- the relay client contract used by gasless execution
+
+It does not own:
+
+- encrypted wallet storage
+- CLI session or password flows
+- hosted relay operations
+- swap-specific product policy
+
+Rule: keep account/auth primitives in `@moneyos/gasless`; keep local wallet UX
+in `moneyos`; keep hosted sponsorship logic in the relay service.
+
+## Relay service
+
+`services/relay` is the hosted sponsorship service for the gasless path.
+
+It owns:
+
+- relay HTTP routes and policy enforcement
+- sponsor-wallet health checks and rate limits
+- SQLite persistence for relay state
+- submission, confirmation, and deploy-and-execute handling
+- launchd/systemd/Docker deploy artifacts and deploy docs under `services/relay/deploy/`
+
+It does not own:
+
+- the encrypted user wallet
+- root CLI wallet/session behavior
+- generic runtime interfaces
+- the `@moneyos/gasless` contract and SDK surface
+- token or chain registry source-of-truth
+
+Rule: the relay is part of the trust boundary for sponsored execution, but it
+is still a service layer outside the root package and outside `@moneyos/core`.
 
 ## Tool
 
