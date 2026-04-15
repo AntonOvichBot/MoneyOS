@@ -175,6 +175,10 @@ export function getWalletPath(config?: CLIConfig): string {
   return config?.walletPath ?? join(CONFIG_DIR, "wallet.json");
 }
 
+export function getContactsPath(): string {
+  return join(CONFIG_DIR, "contacts.json");
+}
+
 export function getBackupDir(config?: CLIConfig): string {
   return config?.backupDir ?? join(CONFIG_DIR, "backups");
 }

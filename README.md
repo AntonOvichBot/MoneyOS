@@ -44,9 +44,12 @@ moneyos tools
 moneyos backup export [--out ./wallet-backup.json] [--force]
 moneyos backup restore <path> [--force]
 moneyos backup status
+moneyos contact set <name> <address>
+moneyos contact list
+moneyos contact remove <name>
 moneyos keystore status
 moneyos balance [token] [--address 0x...] [--chain <id>] [--all]
-moneyos send <amount> <token> <to>
+moneyos send <amount> <token> <to|contact>
 ```
 
 After `moneyos add swap`, the installed swap tool adds:
@@ -74,6 +77,31 @@ moneyos add swap
 moneyos tools
 moneyos swap 0.1 RYZE ETH
 ```
+
+### Local contacts
+
+Save addresses as named contacts and send to them by name:
+
+```bash
+moneyos contact set dad 0x689c78B4DBa64A88A0dC03a579D01681F52C5A73
+moneyos contact list
+moneyos send 10 USDC dad
+moneyos contact remove dad
+```
+
+Contacts are stored locally at `~/.moneyos/contacts.json`. The file is
+per-user, never shared, never synced. `moneyos send` prints the resolved
+address before executing so you can verify the recipient:
+
+```
+$ moneyos send 10 USDC dad
+Resolved dad → 0x689c78B4DBa64A88A0dC03a579D01681F52C5A73
+Sending 10 USDC to 0x689c78B4... on Arbitrum One...
+```
+
+Raw addresses still work — `moneyos send 10 USDC 0x...` behaves exactly as
+before. If the recipient is neither a valid address nor a known contact, the
+send fails with a clear error.
 
 ### Gasless mode (v1 opt-in)
 

@@ -95,6 +95,7 @@ src/
 │   ├── config.ts                   — local config and path helpers
 │   ├── wallet.ts                   — wallet/address resolution for CLI flows
 │   ├── wallet-status.ts            — wallet status formatting and legacy detection
+│   ├── contacts.ts                 — local contacts address book store
 │   ├── gasless.ts                  — gasless env/default resolution helpers
 │   ├── prompt.ts                   — hidden terminal password prompt
 │   ├── session.ts                  — local unlock session daemon/client
@@ -106,6 +107,7 @@ src/
 │   │   ├── auth.ts                 — unlock, inspect, lock, rotate wallet password
 │   │   ├── backup.ts               — export/restore/status for encrypted backups
 │   │   ├── balance.ts              — balance reads for default or explicit address
+│   │   ├── contact.ts              — local contacts set/list/remove commands
 │   │   ├── gasless.ts              — gasless status/enable/disable commands
 │   │   ├── send.ts                 — token sends through the active executor
 │   │   ├── tools.ts                — add/remove/list/update CLI tools
