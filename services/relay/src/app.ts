@@ -1,3 +1,4 @@
+import { intentIdempotencyKey } from "@moneyos/gasless";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { PolicyInput } from "./policy/types.js";
 import type { PolicyConfig } from "./policy/types.js";
@@ -172,6 +173,26 @@ export function buildRelayApp(deps: RelayAppDependencies): FastifyInstance {
       };
     }
 
+    const replaySubmissionId = intentIdempotencyKey({
+      account: executeRequest.intent.account as `0x${string}`,
+      sponsor: executeRequest.intent.sponsor as `0x${string}`,
+      nonceKey: executeRequest.intent.nonceKey,
+      nonceSeq: executeRequest.intent.nonceSeq,
+    });
+    const replayExisting = deps.db.getSubmission(replaySubmissionId);
+
+    if (
+      replayExisting &&
+      (replayExisting.status === "submitted" || replayExisting.status === "confirmed") &&
+      replayExisting.txHash
+    ) {
+      return {
+        submissionId: replayExisting.id,
+        status: replayExisting.status,
+        txHash: replayExisting.txHash,
+      };
+    }
+
     const decision = await evaluateExecuteIntent(executeRequest, {
       policy: deps.policy,
       relayAddress: deps.relayAddress,
@@ -184,9 +205,16 @@ export function buildRelayApp(deps: RelayAppDependencies): FastifyInstance {
     });
 
     if (decision.status === "rejected") {
-      deps.db.upsertSubmission(decision.submissionId, "rejected", deps.nowSeconds(), {
-        reason: decision.reason ?? "Rejected by policy",
-      });
+      const priorSubmission = deps.db.getSubmission(decision.submissionId);
+      const preservePriorSuccess =
+        priorSubmission &&
+        (priorSubmission.status === "submitted" || priorSubmission.status === "confirmed");
+
+      if (!preservePriorSuccess) {
+        deps.db.upsertSubmission(decision.submissionId, "rejected", deps.nowSeconds(), {
+          reason: decision.reason ?? "Rejected by policy",
+        });
+      }
 
       reply.code(rejectionStatusCode(decision.policyCode));
       return {
