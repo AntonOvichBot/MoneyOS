@@ -11,6 +11,10 @@
     "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",
     "0x7712da72127d5dD213B621497D6E4899d5989e5C"
   ],
-  "odosRouters": [],
-  "odosSwapSelectors": []
+  "odosRouters": [
+    "0xa669e7A0d4b3e4Fa48af2dE86BD4CD7126Be4e13"
+  ],
+  "odosSwapSelectors": [
+    "0x83bd37f9"
+  ]
 }
