@@ -2,6 +2,39 @@
 
 All notable changes to the repo's current `main` branch are documented here.
 
+## 0.6.0 - 2026-04-15
+
+Gasless execution, local contacts, and a wave of wallet UX cleanup.
+
+### Added
+
+- Gasless execution mode, opt-in and default-off. `moneyos gasless status|enable|disable` routes write commands through a smart-account executor instead of the owner EOA. The relay sponsors gas; the smart account still has to hold the asset being sent or swapped. Arbitrum One is the v1 target, with baked defaults for the relay URL, sponsor, factory, and derived smart-account address so `moneyos gasless enable` works out of the box.
+- Smart-account primitives shipped inside the new `@moneyos/gasless` workspace package: `MoneyOSAccountV1`, `MoneyOSAccountFactoryV1` with deterministic CREATE2 deployment, EIP-712 `IntentV1`, ERC-1271 owner-only validation, and replay-safe signer-scoped nonce lanes. The package is bundled inside the published root `moneyos` tarball and is not published to npm on its own.
+- Hosted gasless relay at `services/relay/` — Fastify HTTP app with `POST /v1/execute`, `GET /v1/capabilities`, `GET /v1/tx/:id`; SQLite persistence for nonce reservations, submissions, and usage counters; nonce/simulation/treasury/wallet/health gates; submission adapter with `deployAndExecute` for undeployed smart accounts; kill switch; deploy artifacts for macOS launchd, Linux systemd, and Docker.
+- Local contacts address book. `moneyos contact set|list|remove` stores `name → address` pairs in `~/.moneyos/contacts.json` with 0600 permissions. `moneyos send <amount> <token> <name>` now accepts either a 0x address or a saved contact name, and prints the resolved address before execution so the recipient is always visible.
+- `moneyos update [tool] [--check]` for updating installed MoneyOS CLI tools from the user tool home.
+- `moneyos balance --all` to list balances across every built-in token on the selected chain in one call.
+
+### Changed
+
+- Session send requests are idempotent by request ID at the session layer, so a disconnect after broadcast no longer races into a replay.
+- Cross-chain writes resolve RPC URLs from the chain registry instead of always using the configured default chain's RPC.
+- Core asset registry is honored consistently by balance reads.
+- Release PR shape is mechanically enforced in CI: any PR that bumps a `package.json` version is rejected if it touches anything outside `package.json`, `CHANGELOG.md`, or `package-lock.json` (and their workspace equivalents).
+- Release discipline documented end-to-end in `CONTRIBUTING.md` and `DEVELOPER_GUIDE.md`.
+- Repo docs aligned with the shipped gasless state: `docs/architecture.md`, `DEVELOPER_GUIDE.md`, root `README.md`, `docs/adr-gasless-v1.md`, and the gasless planning documents relabeled as current-state or historical as appropriate.
+- Dropped the implicit "no AI attribution" rule from `DEVELOPER_GUIDE.md`. Commit signature hygiene stays a norm; explicit AI attribution is neither required nor forbidden.
+
+### Fixed
+
+- `moneyos gasless enable` on a fresh install now derives and persists the default smart-account address before marking gasless enabled; previously the enabled flag could save without the derived account.
+- First gasless send against an undeployed smart account no longer fails while trying to read nonce from bytecode that does not exist yet; missing account code is treated as nonce 0.
+- Replayed relay submissions that were already `submitted` or `confirmed` are no longer overwritten by a later rejection record; replay idempotency holds at the app boundary.
+- Gasless executor backdates `validAfter` by 30 seconds to tolerate small client/relay clock skew.
+- The baked Arbitrum gasless relay default was refreshed to the live Funnel hostname after a Tailscale naming drift.
+- Windows session socket/token transport: ACL handling for secure-file checks, named-pipe coverage, and a platform-specific regression fix.
+- `moneyos update` edge cases covered by regression tests.
+
 ## 0.5.1 - 2026-04-13
 
 ### Fixed
