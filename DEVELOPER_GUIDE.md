@@ -220,7 +220,6 @@ Release discipline is enforced mechanically, not trusted:
 - no root-level tool-specific logic
 - no provider-specific logic in `@moneyos/core`
 - tool authors build against `@moneyos/core` and `MoneyOSRuntime`, not root session helpers
-- no AI attribution in code, commits, or docs
 - no secrets, API keys, or Aryze-internal references
 - open source ready from every commit
 - test packages locally before publishing to npm
