@@ -23,6 +23,7 @@ export interface GaslessExecutorOptions {
   nonceResolver: (input: NonceResolverInput) => Promise<bigint>;
   nonceKey?: bigint;
   validityWindowSeconds?: number;
+  clockSkewToleranceSeconds?: number;
 }
 
 export class GaslessExecutor implements ExecutionClient {
@@ -36,6 +37,7 @@ export class GaslessExecutor implements ExecutionClient {
   private readonly nonceResolver: (input: NonceResolverInput) => Promise<bigint>;
   private readonly nonceKey: bigint;
   private readonly validityWindowSeconds: number;
+  private readonly clockSkewToleranceSeconds: number;
 
   constructor(options: GaslessExecutorOptions) {
     this.account = options.account;
@@ -46,6 +48,7 @@ export class GaslessExecutor implements ExecutionClient {
     this.nonceResolver = options.nonceResolver;
     this.nonceKey = options.nonceKey ?? 0n;
     this.validityWindowSeconds = options.validityWindowSeconds ?? 300;
+    this.clockSkewToleranceSeconds = options.clockSkewToleranceSeconds ?? 30;
   }
 
   getAddress(): Address {
@@ -80,13 +83,16 @@ export class GaslessExecutor implements ExecutionClient {
     });
 
     const now = Math.floor(Date.now() / 1000);
+    const validAfter = BigInt(
+      Math.max(0, now - this.clockSkewToleranceSeconds),
+    );
     const intent: IntentV1 = {
       account: this.account,
       sponsor: this.sponsor,
       nonceKey: this.nonceKey,
       nonceSeq,
-      validAfter: BigInt(now),
-      validUntil: BigInt(now + this.validityWindowSeconds),
+      validAfter,
+      validUntil: validAfter + BigInt(this.validityWindowSeconds),
       calls: calls.map(this.toIntentCall),
     };
 

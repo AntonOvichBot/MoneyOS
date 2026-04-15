@@ -11,6 +11,9 @@ describe("gasless network defaults", () => {
     expect(getGaslessNetworkDefaults(42161)).toEqual(
       ARBITRUM_MAINNET_GASLESS_DEFAULTS,
     );
+    expect(ARBITRUM_MAINNET_GASLESS_DEFAULTS.relayUrl).toBe(
+      "https://anton-2-1-1.tail9b8c50.ts.net:8443",
+    );
     expect(getGaslessNetworkDefaults(11155111)).toBeUndefined();
   });
 

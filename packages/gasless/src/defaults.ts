@@ -17,7 +17,7 @@ export const MONEYOS_GASLESS_ACCOUNT_FACTORY_SALT =
 
 export const ARBITRUM_MAINNET_GASLESS_DEFAULTS: GaslessNetworkDefaults = {
   chainId: 42161,
-  relayUrl: "https://anton-2-1.tail9b8c50.ts.net:8443",
+  relayUrl: "https://anton-2-1-1.tail9b8c50.ts.net:8443",
   sponsor: "0x689c78B4DBa64A88A0dC03a579D01681F52C5A73",
   factory: "0xACBc69bA5B4ae4e709C6DD472c11DEA12CF8B2A9",
   salt: MONEYOS_GASLESS_ACCOUNT_FACTORY_SALT,

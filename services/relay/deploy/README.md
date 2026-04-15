@@ -58,7 +58,7 @@ MONEYOS_RELAY_CONFIRM_POLL_MS=5000
 
 These are the checked-in production values for the first public Arbitrum One relay cutover:
 
-- Relay URL: `https://anton-2-1.tail9b8c50.ts.net:8443`
+- Relay URL: `https://anton-2-1-1.tail9b8c50.ts.net:8443`
 - Chain ID: `42161`
 - Policy file: `services/relay/config/policy.arbitrum.json`
 - Sponsor / relay hot wallet: `0x689c78B4DBa64A88A0dC03a579D01681F52C5A73`
