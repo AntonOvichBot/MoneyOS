@@ -46,13 +46,21 @@ export function createGaslessExecutionClient(params: {
     baseUrl: params.gasless.relayUrl,
   });
 
-  const nonceResolver = async (input: NonceResolverInput): Promise<bigint> =>
-    publicClient.readContract({
+  const nonceResolver = async (input: NonceResolverInput): Promise<bigint> => {
+    const code = await publicClient.getCode({
+      address: params.gasless.account,
+    });
+    if (!code || code === "0x") {
+      return 0n;
+    }
+
+    return publicClient.readContract({
       address: params.gasless.account,
       abi: moneyOSAccountV1Abi,
       functionName: "getNonce",
       args: [input.signer, input.nonceKey],
     }) as Promise<bigint>;
+  };
 
   return new GaslessExecutor({
     account: params.gasless.account,

@@ -131,6 +131,86 @@ describe("relay app", () => {
     db.close();
   });
 
+  it("returns original submission on replay even if simulation would fail after the first submit", async () => {
+    const db = new RelayDatabase(":memory:");
+    let now = 1710000001;
+    const nowSeconds = () => now;
+
+    const rateLimit = buildRateLimit(5, 20, 2000);
+    const walletOptions = { db, rateLimit, nowSeconds };
+    const treasuryOptions = { db, rateLimit, nowSeconds };
+    const simulate = vi.fn(async () => true);
+    const submitIntent = vi.fn(async () => ({
+      txHash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" as const,
+    }));
+
+    const app = buildRelayApp({
+      policy,
+      relayAddress: policy.relayAddress,
+      killSwitchEnabled: () => false,
+      db,
+      nowSeconds,
+      reserveNonce: createReserveNonceGate(db, nowSeconds),
+      simulate,
+      treasuryGate: createTreasuryGate(treasuryOptions),
+      walletGate: createWalletGate(walletOptions),
+      relayHealthy: async () => true,
+      submissionAdapter: {
+        submitIntent,
+        stop: () => {},
+      },
+      onSubmissionAccepted: (request) => {
+        applyTreasuryUsage(treasuryOptions);
+        applyWalletUsage(walletOptions, request.intent.account);
+      },
+    });
+
+    const firstResponse = await app.inject({
+      method: "POST",
+      url: "/v1/execute",
+      payload: makeExecutePayload("13"),
+    });
+
+    expect(firstResponse.statusCode).toBe(200);
+    const firstBody = firstResponse.json();
+    expect(firstBody).toMatchObject({
+      status: "submitted",
+      txHash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    });
+
+    const storedAfterFirst = db.getSubmission(firstBody.submissionId);
+    expect(storedAfterFirst).toMatchObject({
+      id: firstBody.submissionId,
+      status: "submitted",
+      txHash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      reason: null,
+      confirmedAt: null,
+    });
+
+    simulate.mockImplementation(async () => false);
+
+    const replayResponse = await app.inject({
+      method: "POST",
+      url: "/v1/execute",
+      payload: makeExecutePayload("13"),
+    });
+
+    expect(replayResponse.statusCode).toBe(200);
+    expect(replayResponse.json()).toEqual({
+      submissionId: firstBody.submissionId,
+      status: "submitted",
+      txHash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    });
+    expect(simulate).toHaveBeenCalledTimes(1);
+    expect(submitIntent).toHaveBeenCalledTimes(1);
+
+    const storedAfterReplay = db.getSubmission(firstBody.submissionId);
+    expect(storedAfterReplay).toEqual(storedAfterFirst);
+
+    await app.close();
+    db.close();
+  });
+
   it("returns 404 on missing submission id", async () => {
     const db = new RelayDatabase(":memory:");
 
