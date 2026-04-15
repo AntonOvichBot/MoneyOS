@@ -23,8 +23,8 @@ describe("relayCapabilities", () => {
   it("advertises swap flows when router + selectors are configured", () => {
     const capabilities = relayCapabilities({
       ...basePolicy,
-      odosRouters: ["0xaAaAaAaaAaAaAaaAaAAAAAAAAaaaAaAaAaaAaaAa"],
-      odosSwapSelectors: ["0x12345678"],
+      odosRouters: ["0xa669e7A0d4b3e4Fa48af2dE86BD4CD7126Be4e13"],
+      odosSwapSelectors: ["0x83bd37f9"],
     });
 
     expect(capabilities.supports).toEqual([
