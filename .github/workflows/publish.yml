@@ -93,15 +93,19 @@ jobs:
           fi
 
       - name: Prepare workspace outputs
-        run: npm run build:core
+        run: |
+          npm run build:core
+          npm run build:gasless
 
       - name: Run CI checks
         run: |
           npm run lint
           npm run lint:core
+          npm run lint:gasless
           npm run lint:swap
           npm run typecheck
           npm run typecheck:core
+          npm run typecheck:gasless
           npm run typecheck:swap
           npm test
 
