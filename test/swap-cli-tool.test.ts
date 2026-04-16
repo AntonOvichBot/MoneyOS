@@ -160,7 +160,7 @@ describe("@moneyos/swap CLI tool", () => {
       getRuntime: vi.fn().mockResolvedValue(runtime),
     }).parseAsync(["node", "swap", "1", "USDC", "ETH"]);
 
-    expect(runtime.read.readContract).toHaveBeenCalledOnce();
+    expect(runtime.read.readContract).toHaveBeenCalledTimes(2);
     expect(runtime.execute.send).toHaveBeenCalledOnce();
   });
 });

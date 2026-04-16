@@ -1,8 +1,16 @@
 import { moneyOSAccountFactoryV1Abi, moneyOSAccountV1Abi } from "@moneyos/gasless";
-import type { Address } from "viem";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  type Address,
+} from "viem";
 import type { RuntimeConfig } from "../../config/runtime.js";
 import type { ExecuteIntentRequest } from "../http/routes/intents.js";
 import { resolveSubmissionPath, type SubmissionPathClient } from "../submit/path.js";
+
+export type SimulateResult =
+  | { ok: true }
+  | { ok: false; revertReason?: string; revertData?: `0x${string}` };
 
 export interface SimulateGateOptions {
   runtime: RuntimeConfig;
@@ -12,8 +20,40 @@ export interface SimulateGateOptions {
   };
 }
 
+function extractSimulationFailure(error: unknown): {
+  revertReason?: string;
+  revertData?: `0x${string}`;
+} {
+  const reverted =
+    error instanceof ContractFunctionRevertedError
+      ? error
+      : error instanceof BaseError
+        ? (error.walk(
+            (candidate) => candidate instanceof ContractFunctionRevertedError,
+          ) as ContractFunctionRevertedError | undefined)
+        : undefined;
+
+  const revertData =
+    reverted && typeof (reverted as { raw?: unknown }).raw === "string"
+      ? ((reverted as { raw: `0x${string}` }).raw)
+      : reverted && typeof (reverted as { data?: unknown }).data === "string"
+        ? ((reverted as { data: `0x${string}` }).data)
+        : undefined;
+
+  if (reverted) {
+    return {
+      revertReason: reverted.shortMessage,
+      revertData,
+    };
+  }
+
+  return {
+    revertReason: error instanceof Error ? error.message : undefined,
+  };
+}
+
 export function createSimulateGate(options: SimulateGateOptions) {
-  return async (request: ExecuteIntentRequest): Promise<boolean> => {
+  return async (request: ExecuteIntentRequest): Promise<SimulateResult> => {
     try {
       const submissionPath = await resolveSubmissionPath(
         request,
@@ -36,7 +76,7 @@ export function createSimulateGate(options: SimulateGateOptions) {
           value: submissionPath.value,
         });
 
-        return true;
+        return { ok: true };
       }
 
       await options.publicClient.simulateContract({
@@ -47,9 +87,12 @@ export function createSimulateGate(options: SimulateGateOptions) {
         args: [request.intent, request.signature],
       });
 
-      return true;
-    } catch {
-      return false;
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        ...extractSimulationFailure(error),
+      };
     }
   };
 }

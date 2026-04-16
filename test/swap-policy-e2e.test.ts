@@ -95,8 +95,9 @@ function provider(opts?: {
 
 function readWithAllowance(allowance: bigint): ReadClient {
   return {
-    getBalance: async () => 0n,
-    readContract: async () => allowance as unknown as never,
+    getBalance: async () => 1000000000000000000n,
+    readContract: async ({ functionName }: { functionName: string }) =>
+      (functionName === "balanceOf" ? 1000000n : allowance) as unknown as never,
   };
 }
 

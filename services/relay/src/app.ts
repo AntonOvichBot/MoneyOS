@@ -4,6 +4,7 @@ import type { PolicyInput } from "./policy/types.js";
 import type { PolicyConfig } from "./policy/types.js";
 import { relayCapabilities } from "./http/routes/capabilities.js";
 import { evaluateExecuteIntent, type ExecuteIntentRequest } from "./http/routes/intents.js";
+import type { SimulateResult } from "./gates/simulate.js";
 import type { RelayDatabase } from "./db/sqlite.js";
 import type { SubmissionAdapter } from "./submit/adapter.js";
 
@@ -14,7 +15,7 @@ export interface RelayAppDependencies {
   db: RelayDatabase;
   nowSeconds: () => number;
   reserveNonce: (intent: PolicyInput["intent"], idempotencyKey?: `0x${string}`) => Promise<boolean>;
-  simulate: (input: ExecuteIntentRequest) => Promise<boolean>;
+  simulate: (input: ExecuteIntentRequest) => Promise<SimulateResult>;
   treasuryGate: (input: ExecuteIntentRequest) => Promise<boolean>;
   walletGate: (input: ExecuteIntentRequest) => Promise<boolean>;
   relayHealthy: () => Promise<boolean>;
@@ -222,6 +223,7 @@ export function buildRelayApp(deps: RelayAppDependencies): FastifyInstance {
         status: "rejected",
         reason: decision.reason,
         policyCode: decision.policyCode,
+        revertReason: decision.revertReason,
       };
     }
 

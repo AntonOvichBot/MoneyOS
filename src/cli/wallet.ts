@@ -16,6 +16,9 @@ import {
 import { connectLocalSession } from "../local-session.js";
 import { isGaslessEnabled, resolveGaslessExecutionConfig } from "./gasless.js";
 
+const GASLESS_MISSING_ENV_ERROR =
+  "Gasless mode is enabled but required environment variables are missing. Set MONEYOS_GASLESS_RELAY_URL, MONEYOS_GASLESS_ACCOUNT, and MONEYOS_GASLESS_SPONSOR.";
+
 export type CliWalletBackendKind = "env" | "wallet-file" | "session";
 
 export interface ResolvedCliAddress {
@@ -34,6 +37,11 @@ export interface ResolveCliWalletOptions {
 export interface BuildCliMoneyOSConfigOptions extends ResolveCliWalletOptions {
   chainId?: number;
   requireSigner?: boolean;
+}
+
+export interface ResolvedCliOwnedAddresses {
+  eoa: Address;
+  smartAccount?: Address;
 }
 
 function resolveEnvPrivateKey(explicit?: Hex): Hex | undefined {
@@ -96,6 +104,32 @@ export async function loadCliAddress(
   throw new Error("No wallet configured. Run `moneyos init`.");
 }
 
+export async function resolveCliOwnedAddresses(
+  config: CLIConfig,
+  options: BuildCliMoneyOSConfigOptions = {},
+): Promise<ResolvedCliOwnedAddresses> {
+  const { address } = await loadCliAddress(config, options);
+
+  if (!isGaslessEnabled(config)) {
+    return { eoa: address };
+  }
+
+  const gasless = await resolveGaslessExecutionConfig(config, {
+    ownerAddress: address,
+    chainId: options.chainId ?? config.chainId ?? 42161,
+    rpcUrl: config.rpcUrl,
+  });
+
+  if (!gasless) {
+    throw new Error(GASLESS_MISSING_ENV_ERROR);
+  }
+
+  return {
+    eoa: address,
+    smartAccount: gasless.account,
+  };
+}
+
 export async function buildCliMoneyOSConfig(
   config: CLIConfig,
   options: BuildCliMoneyOSConfigOptions = {},
@@ -121,9 +155,7 @@ export async function buildCliMoneyOSConfig(
     });
     if (!gasless) {
       if (gaslessEnabled) {
-        throw new Error(
-          "Gasless mode is enabled but required environment variables are missing. Set MONEYOS_GASLESS_RELAY_URL, MONEYOS_GASLESS_ACCOUNT, and MONEYOS_GASLESS_SPONSOR.",
-        );
+        throw new Error(GASLESS_MISSING_ENV_ERROR);
       }
       return {
         ...moneyosConfig,

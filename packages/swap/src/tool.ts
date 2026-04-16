@@ -2,6 +2,7 @@ import {
   formatUnits,
   parseUnits,
   encodeFunctionData,
+  type Address,
 } from "viem";
 import type {
   ActionContext,
@@ -9,6 +10,31 @@ import type {
   MoneyOSAction,
 } from "@moneyos/core";
 import type { SwapProvider, SwapResult } from "./types.js";
+
+export interface InsufficientBalanceErrorOptions {
+  symbol: string;
+  address: Address;
+  need: string;
+  have: string;
+}
+
+export class InsufficientBalanceError extends Error {
+  readonly symbol: string;
+  readonly address: Address;
+  readonly need: string;
+  readonly have: string;
+
+  constructor(options: InsufficientBalanceErrorOptions) {
+    super(
+      `Insufficient ${options.symbol} balance on ${options.address}: need ${options.need}, have ${options.have}.`,
+    );
+    this.name = "InsufficientBalanceError";
+    this.symbol = options.symbol;
+    this.address = options.address;
+    this.need = options.need;
+    this.have = options.have;
+  }
+}
 
 const ERC20_ABI = [
   {
@@ -29,6 +55,13 @@ const ERC20_ABI = [
       { name: "owner", type: "address" },
       { name: "spender", type: "address" },
     ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "balanceOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
   },
 ] as const;
@@ -61,6 +94,26 @@ export async function executeSwap<P extends SwapProvider>(
 
   const tokenInInfo = assets.getToken(tokenIn)!;
   const amountWei = parseUnits(amount, tokenInInfo.decimals);
+  const isNativeIn = tokenInAddress === assets.nativeTokenAddress;
+
+  const currentBalance = isNativeIn
+    ? await read.getBalance({ address: sender, chainId })
+    : await read.readContract<bigint>({
+      address: tokenInAddress,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [sender],
+      chainId,
+    });
+
+  if (currentBalance < amountWei) {
+    throw new InsufficientBalanceError({
+      symbol: tokenInInfo.symbol,
+      address: sender,
+      need: formatUnits(amountWei, tokenInInfo.decimals),
+      have: formatUnits(currentBalance, tokenInInfo.decimals),
+    });
+  }
 
   const quote = await provider.getQuote({
     chainId,
@@ -72,7 +125,6 @@ export async function executeSwap<P extends SwapProvider>(
   });
 
   const calldata = await provider.getCalldata(quote);
-  const isNativeIn = tokenInAddress === assets.nativeTokenAddress;
 
   const swapCall: CallRequest = {
     to: calldata.to,
