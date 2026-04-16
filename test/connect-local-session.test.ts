@@ -207,8 +207,9 @@ describe("connectLocalSession", () => {
         expect(execute.capabilities().batching).toBe(true);
 
         const read: ReadClient = {
-          getBalance: async () => 0n,
-          readContract: async () => 0n as unknown as never,
+          getBalance: async () => 1000000000000000000n,
+          readContract: async ({ functionName }: { functionName: string }) =>
+            (functionName === "balanceOf" ? 1000000n : 0n) as unknown as never,
         };
         const assets: AssetRegistry = {
           getToken,
