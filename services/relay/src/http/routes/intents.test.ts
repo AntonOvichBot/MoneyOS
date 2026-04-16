@@ -41,7 +41,7 @@ function makeDeps(overrides: Partial<ExecuteIntentDependencies>): ExecuteIntentD
     relayAddress: policy.relayAddress,
     nowSeconds: () => 1710000001,
     reserveNonce: async () => true,
-    simulate: async () => true,
+    simulate: async () => ({ ok: true }),
     treasuryGate: async () => true,
     walletGate: async () => true,
     relayHealthy: async () => true,
@@ -60,7 +60,7 @@ describe("evaluateExecuteIntent", () => {
       },
     };
 
-    const simulate = vi.fn(async () => true);
+    const simulate = vi.fn(async () => ({ ok: true }));
     const treasuryGate = vi.fn(async () => true);
     const walletGate = vi.fn(async () => true);
     const reserveNonce = vi.fn(async () => true);
@@ -88,7 +88,7 @@ describe("evaluateExecuteIntent", () => {
       },
     };
 
-    const simulate = vi.fn(async () => true);
+    const simulate = vi.fn(async () => ({ ok: true }));
     const reserveNonce = vi.fn(async () => true);
 
     const response = await evaluateExecuteIntent(
@@ -102,7 +102,7 @@ describe("evaluateExecuteIntent", () => {
     expect(reserveNonce).not.toHaveBeenCalled();
   });
 
-  it("does not reserve nonce when simulation fails", async () => {
+  it("returns the revert reason when simulation fails", async () => {
     const request = makeRequest();
     const reserveNonce = vi.fn(async () => true);
 
@@ -110,13 +110,37 @@ describe("evaluateExecuteIntent", () => {
       request,
       makeDeps({
         reserveNonce,
-        simulate: async () => false,
+        simulate: async () => ({
+          ok: false,
+          revertReason: "execution reverted: insufficient funds",
+          revertData: "0xdeadbeef",
+        }),
       }),
     );
 
     expect(reserveNonce).not.toHaveBeenCalled();
-    expect(response.status).toBe("rejected");
-    expect(response.policyCode).toBe("simulation_failed");
+    expect(response).toMatchObject({
+      status: "rejected",
+      policyCode: "simulation_failed",
+      revertReason: "execution reverted: insufficient funds",
+    });
+  });
+
+  it("does not include revert reasons for non-simulation policy rejections", async () => {
+    const request = makeRequest();
+
+    const response = await evaluateExecuteIntent(
+      request,
+      makeDeps({
+        treasuryGate: async () => false,
+      }),
+    );
+
+    expect(response).toMatchObject({
+      status: "rejected",
+      policyCode: "treasury_or_wallet_limit",
+    });
+    expect(response.revertReason).toBeUndefined();
   });
 
   it("rejects when nonce reservation fails", async () => {

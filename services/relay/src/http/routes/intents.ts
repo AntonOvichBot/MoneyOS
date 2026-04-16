@@ -1,6 +1,7 @@
 import { intentIdempotencyKey } from "@moneyos/gasless";
 import type { PolicyConfig, PolicyInput } from "../../policy/types.js";
 import { evaluateMoneyOSNativePolicy } from "../../policy/moneyos-native-policy.js";
+import type { SimulateResult } from "../../gates/simulate.js";
 
 export interface ExecuteIntentRequest {
   intent: PolicyInput["intent"];
@@ -13,7 +14,7 @@ export interface ExecuteIntentDependencies {
   relayAddress: string;
   nowSeconds: () => number;
   reserveNonce: (input: PolicyInput["intent"], idempotencyKey?: `0x${string}`) => Promise<boolean>;
-  simulate: (input: ExecuteIntentRequest) => Promise<boolean>;
+  simulate: (input: ExecuteIntentRequest) => Promise<SimulateResult>;
   treasuryGate: (input: ExecuteIntentRequest) => Promise<boolean>;
   walletGate: (input: ExecuteIntentRequest) => Promise<boolean>;
   relayHealthy: () => Promise<boolean>;
@@ -24,6 +25,7 @@ export interface ExecuteIntentResponse {
   submissionId: string;
   reason?: string;
   policyCode?: string;
+  revertReason?: string;
 }
 
 export async function evaluateExecuteIntent(
@@ -65,14 +67,14 @@ export async function evaluateExecuteIntent(
     };
   }
 
-  const [simulationPassed, treasuryAllowed, walletAllowed] = await Promise.all([
+  const [simulation, treasuryAllowed, walletAllowed] = await Promise.all([
     deps.simulate(request),
     deps.treasuryGate(request),
     deps.walletGate(request),
   ]);
 
   let nonceReserved = false;
-  if (simulationPassed) {
+  if (simulation.ok) {
     nonceReserved = await deps.reserveNonce(request.intent, submissionId);
   }
 
@@ -84,7 +86,7 @@ export async function evaluateExecuteIntent(
       intent: request.intent,
       route: request.route,
       nonceReserved,
-      simulationPassed,
+      simulationPassed: simulation.ok,
       treasuryAllowed,
       walletAllowed,
       relayHealthy,
@@ -98,6 +100,10 @@ export async function evaluateExecuteIntent(
       submissionId,
       reason: decision.reason,
       policyCode: decision.code,
+      revertReason:
+        decision.code === "simulation_failed" && !simulation.ok
+          ? simulation.revertReason
+          : undefined,
     };
   }
 
