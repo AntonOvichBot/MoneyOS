@@ -49,10 +49,10 @@ function mockRead(options: {
     ) => {
       const { functionName } = params;
       if (functionName === "balanceOf") {
-        return options.tokenBalance ?? 1000000n;
+        return (options.tokenBalance ?? 1000000n) as unknown as never;
       }
       if (functionName === "allowance") {
-        return options.allowance ?? 1000000n;
+        return (options.allowance ?? 1000000n) as unknown as never;
       }
       throw new Error(`Unexpected readContract(${String(functionName)})`);
     }),
