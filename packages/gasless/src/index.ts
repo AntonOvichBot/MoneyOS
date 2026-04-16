@@ -49,4 +49,4 @@ export type {
   GaslessExecutorOptions,
   NonceResolverInput,
 } from "./executor/gasless-executor.js";
-export { GaslessExecutor } from "./executor/gasless-executor.js";
+export { GaslessExecutor, GaslessRelayError } from "./executor/gasless-executor.js";

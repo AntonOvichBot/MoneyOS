@@ -68,7 +68,7 @@ describe("relay app", () => {
       db,
       nowSeconds,
       reserveNonce: createReserveNonceGate(db, nowSeconds),
-      simulate: async () => true,
+      simulate: async () => ({ ok: true }),
       treasuryGate: createTreasuryGate(treasuryOptions),
       walletGate: createWalletGate(walletOptions),
       relayHealthy: async () => true,
@@ -139,7 +139,7 @@ describe("relay app", () => {
     const rateLimit = buildRateLimit(5, 20, 2000);
     const walletOptions = { db, rateLimit, nowSeconds };
     const treasuryOptions = { db, rateLimit, nowSeconds };
-    const simulate = vi.fn(async () => true);
+    const simulate = vi.fn(async () => ({ ok: true }));
     const submitIntent = vi.fn(async () => ({
       txHash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" as const,
     }));
@@ -221,7 +221,7 @@ describe("relay app", () => {
       db,
       nowSeconds: () => 1710000001,
       reserveNonce: async () => true,
-      simulate: async () => true,
+      simulate: async () => ({ ok: true }),
       treasuryGate: async () => true,
       walletGate: async () => true,
       relayHealthy: async () => true,
@@ -259,7 +259,7 @@ describe("relay app", () => {
       db,
       nowSeconds,
       reserveNonce: createReserveNonceGate(db, nowSeconds),
-      simulate: async () => true,
+      simulate: async () => ({ ok: true }),
       treasuryGate: createTreasuryGate(treasuryOptions),
       walletGate: createWalletGate(walletOptions),
       relayHealthy: async () => true,
@@ -299,7 +299,7 @@ describe("relay app", () => {
 
   it("returns kill_switch_active before gate execution", async () => {
     const db = new RelayDatabase(":memory:");
-    const simulate = vi.fn(async () => true);
+    const simulate = vi.fn(async () => ({ ok: true }));
     const treasuryGate = vi.fn(async () => true);
     const walletGate = vi.fn(async () => true);
     const reserveNonce = vi.fn(async () => true);
@@ -357,7 +357,7 @@ describe("relay app", () => {
       db,
       nowSeconds: () => 1710000001,
       reserveNonce: async () => true,
-      simulate: async () => true,
+      simulate: async () => ({ ok: true }),
       treasuryGate: async () => true,
       walletGate: async () => true,
       relayHealthy: async () => true,
