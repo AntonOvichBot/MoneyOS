@@ -53,7 +53,9 @@ function mockProvider(opts?: { native?: boolean }): SwapProvider {
 function mockRead(): ReadClient {
   return {
     getBalance: vi.fn().mockResolvedValue(1000000000000000000n),
-    readContract: vi.fn().mockResolvedValue(0n), // zero allowance → triggers approve
+    readContract: vi.fn(async ({ functionName }: { functionName: string }) =>
+      functionName === "balanceOf" ? 1000000n : 0n,
+    ),
   };
 }
 
@@ -124,7 +126,7 @@ describe("executeSwap", () => {
     );
 
     // Should have checked allowance
-    expect(read.readContract).toHaveBeenCalledOnce();
+    expect(read.readContract).toHaveBeenCalledTimes(2);
 
     // Should have sent approve + swap = 2 calls
     expect(execute.send).toHaveBeenCalledTimes(2);
@@ -230,7 +232,7 @@ describe("executeSwap", () => {
       { read, execute, assets },
     );
 
-    expect(read.readContract).toHaveBeenCalledOnce();
+    expect(read.readContract).toHaveBeenCalledTimes(2);
     expect(execute.send).toHaveBeenCalledOnce();
     expect(execute.send).toHaveBeenCalledWith({
       to: ROUTER,
@@ -431,6 +433,6 @@ function createCoveredAllowanceRead(): ReadClient & {
 } {
   return {
     getBalance: vi.fn().mockResolvedValue(1000000000000000000n),
-    readContract: vi.fn().mockResolvedValue(1000000n),
+    readContract: vi.fn(async () => 1000000n),
   };
 }
