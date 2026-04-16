@@ -7,7 +7,32 @@ import type { Address } from "viem";
 import type { LocalAccount } from "viem/accounts";
 import type { IntentCallV1, IntentV1, RouteFreshnessMetadataV1 } from "../intent/v1-types.js";
 import { signIntentV1 } from "../intent/v1-sign.js";
-import type { RelayClient } from "../relay/client.js";
+import type { RelayClient, RelayExecuteResponseV1 } from "../relay/client.js";
+
+export class GaslessRelayError extends Error {
+  readonly submissionId: string;
+  readonly status: RelayExecuteResponseV1["status"];
+  readonly policyCode?: string;
+  readonly revertReason?: string;
+  readonly reason?: string;
+
+  constructor(response: RelayExecuteResponseV1) {
+    const detail =
+      response.revertReason ??
+      response.reason ??
+      (response.status === "rejected"
+        ? response.policyCode ?? "relay rejected the intent"
+        : "relay accepted the intent without a transaction hash");
+    const codeSuffix = response.policyCode ? ` [${response.policyCode}]` : "";
+    super(`Gasless swap failed: ${detail}${codeSuffix}`);
+    this.name = "GaslessRelayError";
+    this.submissionId = response.submissionId;
+    this.status = response.status;
+    this.policyCode = response.policyCode;
+    this.revertReason = response.revertReason;
+    this.reason = response.reason;
+  }
+}
 
 export interface NonceResolverInput {
   signer: Address;
@@ -114,8 +139,8 @@ export class GaslessExecutor implements ExecutionClient {
       route,
     });
 
-    if (!response.txHash) {
-      throw new Error(response.reason ?? "Relay accepted intent without txHash");
+    if (response.status === "rejected" || !response.txHash) {
+      throw new GaslessRelayError(response);
     }
 
     return {

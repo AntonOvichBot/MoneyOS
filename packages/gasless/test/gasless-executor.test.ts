@@ -2,7 +2,7 @@ import type { CallRequest } from "@moneyos/core";
 import type { Address, Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, it, vi } from "vitest";
-import { GaslessExecutor } from "../src/executor/gasless-executor.js";
+import { GaslessExecutor, GaslessRelayError } from "../src/executor/gasless-executor.js";
 import type { RelayClient } from "../src/relay/client.js";
 
 const ACCOUNT = "0x1111111111111111111111111111111111111111" as Address;
@@ -99,6 +99,42 @@ describe("GaslessExecutor", () => {
 
     await expect(executor.sendBatch([{ to: TARGET, chainId: 10 }])).rejects.toThrow(
       "Gasless executor configured for chain 42161 but received 10",
+    );
+  });
+
+  it("surfaces the simulation revert reason when the relay rejects", async () => {
+    const { executor, relayExecute } = createExecutor();
+    relayExecute.mockResolvedValueOnce({
+      submissionId: "submission-2",
+      status: "rejected",
+      reason: "simulation failed",
+      policyCode: "simulation_failed",
+      revertReason: "ERC20: transfer amount exceeds balance",
+    });
+
+    const promise = executor.sendBatch([{ to: TARGET, chainId: 42161 }]);
+    await expect(promise).rejects.toBeInstanceOf(GaslessRelayError);
+    await expect(promise).rejects.toMatchObject({
+      message:
+        "Gasless swap failed: ERC20: transfer amount exceeds balance [simulation_failed]",
+      policyCode: "simulation_failed",
+      revertReason: "ERC20: transfer amount exceeds balance",
+      status: "rejected",
+    });
+  });
+
+  it("falls back to the policy code when the relay rejects without a reason", async () => {
+    const { executor, relayExecute } = createExecutor();
+    relayExecute.mockResolvedValueOnce({
+      submissionId: "submission-3",
+      status: "rejected",
+      policyCode: "treasury_or_wallet_limit",
+    });
+
+    await expect(
+      executor.sendBatch([{ to: TARGET, chainId: 42161 }]),
+    ).rejects.toThrow(
+      "Gasless swap failed: treasury_or_wallet_limit [treasury_or_wallet_limit]",
     );
   });
 });

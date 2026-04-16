@@ -19,6 +19,8 @@ export interface RelayExecuteResponseV1 {
   txHash?: Hex;
   status: "accepted" | "submitted" | "rejected";
   reason?: string;
+  policyCode?: string;
+  revertReason?: string;
 }
 
 export interface RelayTxStatusResponse {
