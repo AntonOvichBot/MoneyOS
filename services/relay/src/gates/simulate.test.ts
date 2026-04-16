@@ -1,4 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  encodeErrorResult,
+  parseAbi,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { signIntentV1, toCreate2Salt, type IntentV1 } from "@moneyos/gasless";
 import type { RuntimeConfig } from "../../config/runtime.js";
@@ -81,7 +87,7 @@ describe("createSimulateGate", () => {
       },
     });
 
-    await expect(gate(request)).resolves.toBe(true);
+    await expect(gate(request)).resolves.toEqual({ ok: true });
     expect(simulateContract).toHaveBeenCalledWith(
       expect.objectContaining({
         functionName: "execute",
@@ -106,7 +112,7 @@ describe("createSimulateGate", () => {
       },
     });
 
-    await expect(gate(request)).resolves.toBe(true);
+    await expect(gate(request)).resolves.toEqual({ ok: true });
     expect(simulateContract).toHaveBeenCalledWith(
       expect.objectContaining({
         functionName: "deployAndExecute",
@@ -115,8 +121,42 @@ describe("createSimulateGate", () => {
     );
   });
 
-  it("returns false when chain simulation reverts", async () => {
+  it("returns the decoded revert reason when chain simulation reverts", async () => {
     const request = await makeSignedRequest("0x6666666666666666666666666666666666666666");
+    const revertData = encodeErrorResult({
+      abi: parseAbi(["error Error(string)"]),
+      errorName: "Error",
+      args: ["insufficient funds"],
+    });
+
+    const gate = createSimulateGate({
+      runtime: makeRuntime(),
+      sponsorAddress: "0x1111111111111111111111111111111111111111",
+      publicClient: {
+        getCode: vi.fn(async () => "0x1234" as const),
+        readContract: vi.fn(),
+        simulateContract: vi.fn(async () => {
+          throw new BaseError("simulation failed", {
+            cause: new ContractFunctionRevertedError({
+              abi: [],
+              data: revertData,
+              functionName: "execute",
+            }),
+          });
+        }),
+      },
+    });
+
+    const result = await gate(request);
+    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({
+      revertData,
+    });
+    expect(result.ok === false && result.revertReason).toContain("insufficient funds");
+  });
+
+  it("falls back to the error message when viem revert data is not decodable", async () => {
+    const request = await makeSignedRequest("0x7777777777777777777777777777777777777777");
 
     const gate = createSimulateGate({
       runtime: makeRuntime(),
@@ -130,6 +170,9 @@ describe("createSimulateGate", () => {
       },
     });
 
-    await expect(gate(request)).resolves.toBe(false);
+    await expect(gate(request)).resolves.toEqual({
+      ok: false,
+      revertReason: "execution reverted",
+    });
   });
 });
