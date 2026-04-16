@@ -81,8 +81,33 @@ export async function executeSwap<P extends SwapProvider>(
     chainId,
   };
 
-  let approveCall: CallRequest | undefined;
-  if (!isNativeIn) {
+  const canBatch =
+    typeof execute.sendBatch === "function" && execute.capabilities().batching;
+
+  function buildApproveCall(): CallRequest {
+    const approveData = encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [calldata.to, amountWei],
+    });
+    return { to: tokenInAddress!, data: approveData, chainId };
+  }
+
+  let result;
+  if (isNativeIn) {
+    // Native-in swap is a single call; no approve possible or needed.
+    result = await execute.send(swapCall);
+  } else if (canBatch) {
+    // Batching executors (e.g. gasless smart-account). The relay policy
+    // only sponsors the [approve, swap] batch shape for ERC-20-in, with
+    // no allowed 1-call "swap with existing allowance" shape. Submit the
+    // exact-amount approve unconditionally so the batch always matches
+    // policy regardless of prior allowance state. The extra approve is
+    // explicitly permitted (policy forbids only uint256.max amounts).
+    result = await execute.sendBatch!([buildApproveCall(), swapCall]);
+  } else {
+    // Non-batching executor (EOA). No relay shape constraint here, so
+    // keep the cheaper allowance-gated path: only approve when needed.
     const currentAllowance = await read.readContract<bigint>({
       address: tokenInAddress,
       abi: ERC20_ABI,
@@ -90,32 +115,9 @@ export async function executeSwap<P extends SwapProvider>(
       args: [sender, calldata.to],
       chainId,
     });
-
     if (currentAllowance < amountWei) {
-      const approveData = encodeFunctionData({
-        abi: ERC20_ABI,
-        functionName: "approve",
-        args: [calldata.to, amountWei],
-      });
-      approveCall = { to: tokenInAddress, data: approveData, chainId };
+      await execute.send(buildApproveCall());
     }
-  }
-
-  let result;
-  if (approveCall) {
-    // Approval required. The gasless relay only sponsors the atomic
-    // approve + swap batch shape, so prefer sendBatch when the execution
-    // client supports it. Fall back to sequential submissions for EOA-style
-    // clients that do not batch.
-    const canBatch =
-      typeof execute.sendBatch === "function" && execute.capabilities().batching;
-    if (canBatch) {
-      result = await execute.sendBatch!([approveCall, swapCall]);
-    } else {
-      await execute.send(approveCall);
-      result = await execute.send(swapCall);
-    }
-  } else {
     result = await execute.send(swapCall);
   }
 
