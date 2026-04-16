@@ -28,5 +28,6 @@ export async function connectLocalSession(
     tokenPath,
     address: session.address,
     mode: session.mode,
+    capabilities: session.capabilities,
   });
 }

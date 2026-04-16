@@ -209,6 +209,188 @@ describe("local auth session", () => {
     }
   });
 
+  it("surfaces the daemon executor's capabilities through status and the client", async () => {
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("caps");
+    const batchingExecutor: ExecutionClient = {
+      mode: "smart-account",
+      getAddress: () => TEST_ADDRESS,
+      async send(call: CallRequest): Promise<ExecutionResult> {
+        return { hash: `0x${"a".repeat(64)}` as Hex, chainId: call.chainId };
+      },
+      async sendBatch(calls: CallRequest[]): Promise<ExecutionResult> {
+        return { hash: `0x${"b".repeat(64)}` as Hex, chainId: calls[0]!.chainId };
+      },
+      capabilities() {
+        return {
+          sponsoredGas: true,
+          batching: true,
+          simulation: true,
+        };
+      },
+    };
+    const handle = await startSessionServer(
+      {
+        type: "start",
+        privateKey: TEST_PK,
+        chainId: 42161,
+        socketPath,
+        tokenPath,
+        ttlMs: 5000,
+      },
+      { executor: batchingExecutor },
+    );
+
+    try {
+      const status = await getSessionStatus(socketPath, tokenPath);
+      expect(status?.capabilities).toEqual({
+        sponsoredGas: true,
+        batching: true,
+        simulation: true,
+      });
+
+      const client = new SessionExecutionClient({
+        socketPath,
+        tokenPath,
+        address: TEST_ADDRESS,
+        mode: status!.mode,
+        capabilities: status!.capabilities,
+      });
+      expect(client.capabilities()).toEqual({
+        sponsoredGas: true,
+        batching: true,
+        simulation: true,
+      });
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it("forwards sendBatch to the daemon executor's sendBatch", async () => {
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("batch");
+    const receivedBatches: CallRequest[][] = [];
+    const expectedResult: ExecutionResult = {
+      hash: `0x${"c".repeat(64)}` as Hex,
+      chainId: 42161,
+    };
+    const batchingExecutor: ExecutionClient = {
+      mode: "smart-account",
+      getAddress: () => TEST_ADDRESS,
+      async send(): Promise<ExecutionResult> {
+        throw new Error("send should not be called on the batch path");
+      },
+      async sendBatch(calls: CallRequest[]): Promise<ExecutionResult> {
+        receivedBatches.push(calls);
+        return { hash: expectedResult.hash, chainId: calls[0]!.chainId };
+      },
+      capabilities() {
+        return {
+          sponsoredGas: true,
+          batching: true,
+          simulation: true,
+        };
+      },
+    };
+    const handle = await startSessionServer(
+      {
+        type: "start",
+        privateKey: TEST_PK,
+        chainId: 42161,
+        socketPath,
+        tokenPath,
+        ttlMs: 5000,
+      },
+      { executor: batchingExecutor },
+    );
+
+    try {
+      const client = new SessionExecutionClient({
+        socketPath,
+        tokenPath,
+        address: TEST_ADDRESS,
+        mode: "smart-account",
+        capabilities: {
+          sponsoredGas: true,
+          batching: true,
+          simulation: true,
+        },
+      });
+
+      const approveCall: CallRequest = {
+        to: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" as Hex,
+        data: "0x095ea7b3" as Hex,
+        chainId: 42161,
+      };
+      const swapCall: CallRequest = {
+        to: "0x1111111111111111111111111111111111111111" as Hex,
+        data: "0xdeadbeef" as Hex,
+        value: 0n,
+        chainId: 42161,
+      };
+
+      await expect(client.sendBatch([approveCall, swapCall])).resolves.toEqual(
+        expectedResult,
+      );
+
+      expect(receivedBatches).toHaveLength(1);
+      expect(receivedBatches[0]).toEqual([
+        { ...approveCall, value: undefined },
+        swapCall,
+      ]);
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns a clear error if sendBatch is requested from a non-batching daemon", async () => {
+    const { baseDir, socketPath, tokenPath } = makeSessionPaths("nobatch");
+    const eoaExecutor: ExecutionClient = {
+      mode: "eoa",
+      getAddress: () => TEST_ADDRESS,
+      async send(call: CallRequest): Promise<ExecutionResult> {
+        return { hash: `0x${"d".repeat(64)}` as Hex, chainId: call.chainId };
+      },
+      capabilities() {
+        return {
+          sponsoredGas: false,
+          batching: false,
+          simulation: false,
+        };
+      },
+    };
+    const handle = await startSessionServer(
+      {
+        type: "start",
+        privateKey: TEST_PK,
+        chainId: 42161,
+        socketPath,
+        tokenPath,
+        ttlMs: 5000,
+      },
+      { executor: eoaExecutor },
+    );
+
+    try {
+      const client = new SessionExecutionClient({
+        socketPath,
+        tokenPath,
+        address: TEST_ADDRESS,
+        mode: "eoa",
+      });
+
+      await expect(
+        client.sendBatch([
+          { to: TEST_ADDRESS, chainId: 42161 },
+          { to: TEST_ADDRESS, chainId: 42161 },
+        ]),
+      ).rejects.toThrow("Session executor does not support batched execution.");
+    } finally {
+      await handle.close();
+      rmSync(baseDir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps a slow send request alive long enough to return the executor result", async () => {
     const { baseDir, socketPath, tokenPath } = makeSessionPaths("send");
     const expectedResult: ExecutionResult = {

@@ -5,6 +5,7 @@ import {
 } from "viem";
 import type {
   ActionContext,
+  CallRequest,
   MoneyOSAction,
 } from "@moneyos/core";
 import type { SwapProvider, SwapResult } from "./types.js";
@@ -73,6 +74,14 @@ export async function executeSwap<P extends SwapProvider>(
   const calldata = await provider.getCalldata(quote);
   const isNativeIn = tokenInAddress === assets.nativeTokenAddress;
 
+  const swapCall: CallRequest = {
+    to: calldata.to,
+    data: calldata.data,
+    value: isNativeIn ? amountWei : calldata.value,
+    chainId,
+  };
+
+  let approveCall: CallRequest | undefined;
   if (!isNativeIn) {
     const currentAllowance = await read.readContract<bigint>({
       address: tokenInAddress,
@@ -88,16 +97,27 @@ export async function executeSwap<P extends SwapProvider>(
         functionName: "approve",
         args: [calldata.to, amountWei],
       });
-      await execute.send({ to: tokenInAddress, data: approveData, chainId });
+      approveCall = { to: tokenInAddress, data: approveData, chainId };
     }
   }
 
-  const result = await execute.send({
-    to: calldata.to,
-    data: calldata.data,
-    value: isNativeIn ? amountWei : calldata.value,
-    chainId,
-  });
+  let result;
+  if (approveCall) {
+    // Approval required. The gasless relay only sponsors the atomic
+    // approve + swap batch shape, so prefer sendBatch when the execution
+    // client supports it. Fall back to sequential submissions for EOA-style
+    // clients that do not batch.
+    const canBatch =
+      typeof execute.sendBatch === "function" && execute.capabilities().batching;
+    if (canBatch) {
+      result = await execute.sendBatch!([approveCall, swapCall]);
+    } else {
+      await execute.send(approveCall);
+      result = await execute.send(swapCall);
+    }
+  } else {
+    result = await execute.send(swapCall);
+  }
 
   const tokenOutInfo = assets.getToken(tokenOut)!;
   return {

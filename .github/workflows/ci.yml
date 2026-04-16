@@ -85,7 +85,7 @@ jobs:
         run: npm ci
 
       - name: Prepare workspace outputs
-        run: npm run build:core && npm run build:gasless
+        run: npm run build:core && npm run build:swap && npm run build:gasless
 
       - name: Test Windows named-pipe session transport
         run: npx vitest run test/config.test.ts test/session.test.ts test/connect-local-session.test.ts test/cli-wallet.test.ts

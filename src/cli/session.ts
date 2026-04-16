@@ -21,6 +21,10 @@ import { privateKeyToManagedAccount } from "../core/signer.js";
 
 export type SessionExecutionMode = ExecutionClient["mode"];
 
+export type SessionExecutionCapabilities = ReturnType<
+  ExecutionClient["capabilities"]
+>;
+
 export interface SessionGaslessStartConfig {
   account: Address;
   sponsor: Address;
@@ -44,12 +48,14 @@ export interface SessionStatusResult {
   address: Address;
   expiresAt: string;
   mode: SessionExecutionMode;
+  capabilities: SessionExecutionCapabilities;
 }
 
 export interface SessionServerHandle {
   readonly address: Address;
   readonly expiresAt: string;
   readonly mode: SessionExecutionMode;
+  readonly capabilities: SessionExecutionCapabilities;
   close(): Promise<void>;
 }
 
@@ -60,15 +66,26 @@ interface SessionSendParams {
   value?: string;
 }
 
+interface SessionSendBatchParams {
+  calls: SessionSendParams[];
+}
+
 type SessionRequest =
   | { id: string; token: string; type: "status" }
   | { id: string; token: string; type: "lock" }
-  | { id: string; token: string; type: "send"; params: SessionSendParams };
+  | { id: string; token: string; type: "send"; params: SessionSendParams }
+  | {
+      id: string;
+      token: string;
+      type: "sendBatch";
+      params: SessionSendBatchParams;
+    };
 
 type SessionRequestWithoutToken =
   | { id: string; type: "status" }
   | { id: string; type: "lock" }
-  | { id: string; type: "send"; params: SessionSendParams };
+  | { id: string; type: "send"; params: SessionSendParams }
+  | { id: string; type: "sendBatch"; params: SessionSendBatchParams };
 
 type SessionResponse =
   | {
@@ -135,8 +152,10 @@ function createRequestId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
-function createSendRequestFingerprint(request: Extract<SessionRequest, { type: "send" }>): string {
-  return JSON.stringify(request.params);
+function createSendRequestFingerprint(
+  request: Extract<SessionRequest, { type: "send" | "sendBatch" }>,
+): string {
+  return JSON.stringify({ type: request.type, params: request.params });
 }
 
 function toGaslessExecutionConfig(
@@ -322,6 +341,17 @@ function unwrapSessionSendResponse(response: SessionResponse): ExecutionResult {
   return response.result as ExecutionResult;
 }
 
+function capabilitiesForMode(
+  mode: SessionExecutionMode,
+): SessionExecutionCapabilities {
+  const smartAccount = mode === "smart-account";
+  return {
+    sponsoredGas: smartAccount,
+    batching: false,
+    simulation: smartAccount,
+  };
+}
+
 export async function getSessionStatus(
   socketPath: string,
   tokenPath: string,
@@ -344,10 +374,12 @@ export async function getSessionStatus(
       address: Address;
       expiresAt: string;
     };
+    const mode = result.mode ?? "eoa";
     return {
       address: result.address,
       expiresAt: result.expiresAt,
-      mode: result.mode ?? "eoa",
+      mode,
+      capabilities: result.capabilities ?? capabilitiesForMode(mode),
     };
   } catch {
     removeFileIfPresent(socketPath);
@@ -378,22 +410,34 @@ export async function lockSession(
   }
 }
 
+function serializeCallForSession(call: CallRequest): SessionSendParams {
+  return {
+    to: call.to,
+    chainId: call.chainId,
+    data: call.data,
+    value: call.value?.toString(),
+  };
+}
+
 export class SessionExecutionClient implements ExecutionClient {
   readonly mode: SessionExecutionMode;
   private readonly socketPath: string;
   private readonly tokenPath: string;
   private readonly address: Address;
+  private readonly caps: SessionExecutionCapabilities;
 
   constructor(params: {
     socketPath: string;
     tokenPath: string;
     address: Address;
     mode?: SessionExecutionMode;
+    capabilities?: SessionExecutionCapabilities;
   }) {
     this.socketPath = params.socketPath;
     this.tokenPath = params.tokenPath;
     this.address = params.address;
     this.mode = params.mode ?? "eoa";
+    this.caps = params.capabilities ?? capabilitiesForMode(this.mode);
   }
 
   getAddress(): Address {
@@ -414,6 +458,23 @@ export class SessionExecutionClient implements ExecutionClient {
     }
   }
 
+  async sendBatch(calls: CallRequest[]): Promise<ExecutionResult> {
+    if (calls.length === 0) {
+      throw new Error("sendBatch requires at least one call");
+    }
+    const requestId = createRequestId();
+
+    try {
+      return await this.sendBatchWithRequestId(requestId, calls);
+    } catch (error) {
+      if (!isRetryableSessionTransportError(error)) {
+        throw error;
+      }
+
+      return this.sendBatchWithRequestId(requestId, calls);
+    }
+  }
+
   private async sendWithRequestId(
     requestId: string,
     call: CallRequest,
@@ -424,11 +485,25 @@ export class SessionExecutionClient implements ExecutionClient {
       {
         id: requestId,
         type: "send",
+        params: serializeCallForSession(call),
+      },
+      SESSION_SEND_TIMEOUT_MS,
+    );
+    return unwrapSessionSendResponse(response);
+  }
+
+  private async sendBatchWithRequestId(
+    requestId: string,
+    calls: CallRequest[],
+  ): Promise<ExecutionResult> {
+    const response = await sendSessionRequest(
+      this.socketPath,
+      this.tokenPath,
+      {
+        id: requestId,
+        type: "sendBatch",
         params: {
-          to: call.to,
-          chainId: call.chainId,
-          data: call.data,
-          value: call.value?.toString(),
+          calls: calls.map(serializeCallForSession),
         },
       },
       SESSION_SEND_TIMEOUT_MS,
@@ -436,12 +511,58 @@ export class SessionExecutionClient implements ExecutionClient {
     return unwrapSessionSendResponse(response);
   }
 
-  capabilities() {
-    const smartAccount = this.mode === "smart-account";
+  capabilities(): SessionExecutionCapabilities {
+    return { ...this.caps };
+  }
+}
+
+function deserializeSessionCall(params: SessionSendParams): CallRequest {
+  return {
+    to: params.to,
+    chainId: params.chainId,
+    data: params.data,
+    value: params.value !== undefined ? BigInt(params.value) : undefined,
+  };
+}
+
+async function executeSendLikeRequest(
+  executor: ExecutionClient,
+  request: Extract<SessionRequest, { type: "send" | "sendBatch" }>,
+): Promise<SessionResponse> {
+  try {
+    let result: ExecutionResult;
+    if (request.type === "send") {
+      result = await executor.send(deserializeSessionCall(request.params));
+    } else {
+      if (typeof executor.sendBatch !== "function") {
+        return {
+          id: request.id,
+          ok: false,
+          error: "Session executor does not support batched execution.",
+        };
+      }
+      if (request.params.calls.length === 0) {
+        return {
+          id: request.id,
+          ok: false,
+          error: "sendBatch requires at least one call",
+        };
+      }
+      result = await executor.sendBatch(
+        request.params.calls.map(deserializeSessionCall),
+      );
+    }
+
     return {
-      sponsoredGas: smartAccount,
-      batching: false,
-      simulation: smartAccount,
+      id: request.id,
+      ok: true,
+      result,
+    };
+  } catch (error) {
+    return {
+      id: request.id,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }
@@ -558,6 +679,7 @@ export async function startSessionServer(
               address: executor.getAddress(),
               expiresAt: expiresAt.toISOString(),
               mode: executor.mode,
+              capabilities: executor.capabilities(),
             },
           });
           return;
@@ -594,31 +716,7 @@ export async function startSessionServer(
           return;
         }
 
-        const responsePromise = (async (): Promise<SessionResponse> => {
-          try {
-            const result = await executor.send({
-              to: request.params.to,
-              chainId: request.params.chainId,
-              data: request.params.data,
-              value:
-                request.params.value !== undefined
-                  ? BigInt(request.params.value)
-                  : undefined,
-            });
-
-            return {
-              id: request.id,
-              ok: true,
-              result,
-            };
-          } catch (error) {
-            return {
-              id: request.id,
-              ok: false,
-              error: error instanceof Error ? error.message : String(error),
-            };
-          }
-        })();
+        const responsePromise = executeSendLikeRequest(executor, request);
         sendResponses.set(request.id, {
           fingerprint,
           response: responsePromise,
@@ -660,6 +758,7 @@ export async function startSessionServer(
     address: executor.getAddress(),
     expiresAt: expiresAt.toISOString(),
     mode: executor.mode,
+    capabilities: executor.capabilities(),
     close,
   };
 }
@@ -718,7 +817,13 @@ export async function startDetachedSessionDaemon(
     });
     child.on("message", (message: unknown) => {
       const payload = message as
-        | { type: "ready"; address: Address; expiresAt: string; mode: SessionExecutionMode }
+        | {
+            type: "ready";
+            address: Address;
+            expiresAt: string;
+            mode: SessionExecutionMode;
+            capabilities?: SessionExecutionCapabilities;
+          }
         | { type: "error"; error: string };
       if (payload?.type === "ready") {
         child.disconnect();
@@ -727,6 +832,8 @@ export async function startDetachedSessionDaemon(
           address: payload.address,
           expiresAt: payload.expiresAt,
           mode: payload.mode,
+          capabilities:
+            payload.capabilities ?? capabilitiesForMode(payload.mode),
         });
       } else if (payload?.type === "error") {
         finish(new Error(payload.error));
@@ -780,6 +887,7 @@ export async function runSessionDaemonProcess(): Promise<void> {
     address: handle.address,
     expiresAt: handle.expiresAt,
     mode: handle.mode,
+    capabilities: handle.capabilities,
   });
   process.on("SIGTERM", () => {
     void handle.close().then(() => shutdown());

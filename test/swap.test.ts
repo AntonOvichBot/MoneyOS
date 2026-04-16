@@ -73,6 +73,29 @@ function mockExecute(): ExecutionClient {
   };
 }
 
+function mockBatchingExecute(): ExecutionClient & {
+  send: ReturnType<typeof vi.fn>;
+  sendBatch: ReturnType<typeof vi.fn>;
+} {
+  return {
+    mode: "smart-account",
+    getAddress: () => SENDER,
+    send: vi.fn().mockResolvedValue({
+      hash: TX_HASH,
+      chainId: 42161,
+    }),
+    sendBatch: vi.fn().mockResolvedValue({
+      hash: TX_HASH,
+      chainId: 42161,
+    }),
+    capabilities: () => ({
+      sponsoredGas: true,
+      batching: true,
+      simulation: true,
+    }),
+  };
+}
+
 function mockAssets(): AssetRegistry {
   return {
     getToken,
@@ -120,6 +143,37 @@ describe("executeSwap", () => {
     expect(result.tokenIn).toBe("USDC");
     expect(result.tokenOut).toBe("RYZE");
     expect(result.hash).toBeDefined();
+  });
+
+  it("ERC20 swap on a batching executor: sends approve+swap as one atomic batch", async () => {
+    const read = mockRead();
+    const execute = mockBatchingExecute();
+    const assets = mockAssets();
+    const provider = mockProvider();
+
+    const result = await executeSwap(
+      {
+        tokenIn: "USDC",
+        tokenOut: "RYZE",
+        amount: "1",
+        provider,
+        chainId: 42161,
+      },
+      { read, execute, assets },
+    );
+
+    expect(execute.send).not.toHaveBeenCalled();
+    expect(execute.sendBatch).toHaveBeenCalledTimes(1);
+
+    const batched = (execute.sendBatch as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(batched).toHaveLength(2);
+    expect(batched[0].to).toBe("0xaf88d065e77c8cC2239327C5EDb3A432268e5831");
+    expect(batched[0].data).toBeDefined();
+    expect(batched[0].chainId).toBe(42161);
+    expect(batched[1].to).toBe(ROUTER);
+    expect(batched[1].data).toBe("0xdeadbeef");
+
+    expect(result.hash).toBe(TX_HASH);
   });
 
   it("native swap: skips approve", async () => {
