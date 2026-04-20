@@ -14,8 +14,20 @@ import { dirname } from "node:path";
 import { spawn } from "node:child_process";
 import type { Address } from "viem";
 import type { CallRequest, ExecutionClient, ExecutionResult } from "@moneyos/core";
+import type { GaslessExecutionConfig } from "../core/gasless.js";
+import { createGaslessExecutionClient } from "../core/gasless.js";
 import { EOAExecutor } from "../core/eoa.js";
 import { privateKeyToManagedAccount } from "../core/signer.js";
+
+export type SessionExecutionMode = ExecutionClient["mode"];
+
+export interface SessionGaslessStartConfig {
+  account: Address;
+  sponsor: Address;
+  relayUrl: string;
+  nonceKey?: string;
+  validityWindowSeconds?: number;
+}
 
 export interface SessionServerStartMessage {
   type: "start";
@@ -25,16 +37,19 @@ export interface SessionServerStartMessage {
   socketPath: string;
   tokenPath: string;
   ttlMs: number;
+  gasless?: SessionGaslessStartConfig;
 }
 
 export interface SessionStatusResult {
   address: Address;
   expiresAt: string;
+  mode: SessionExecutionMode;
 }
 
 export interface SessionServerHandle {
   readonly address: Address;
   readonly expiresAt: string;
+  readonly mode: SessionExecutionMode;
   close(): Promise<void>;
 }
 
@@ -122,6 +137,21 @@ function createRequestId(): string {
 
 function createSendRequestFingerprint(request: Extract<SessionRequest, { type: "send" }>): string {
   return JSON.stringify(request.params);
+}
+
+function toGaslessExecutionConfig(
+  config: SessionGaslessStartConfig,
+): GaslessExecutionConfig {
+  return {
+    account: config.account,
+    sponsor: config.sponsor,
+    relayUrl: config.relayUrl,
+    nonceKey:
+      config.nonceKey !== undefined && config.nonceKey.trim() !== ""
+        ? BigInt(config.nonceKey)
+        : undefined,
+    validityWindowSeconds: config.validityWindowSeconds,
+  };
 }
 
 function loadSessionToken(tokenPath: string): string {
@@ -306,7 +336,19 @@ export async function getSessionStatus(
       },
       SESSION_CONTROL_TIMEOUT_MS,
     );
-    return response.ok ? (response.result as SessionStatusResult) : undefined;
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const result = response.result as Partial<SessionStatusResult> & {
+      address: Address;
+      expiresAt: string;
+    };
+    return {
+      address: result.address,
+      expiresAt: result.expiresAt,
+      mode: result.mode ?? "eoa",
+    };
   } catch {
     removeFileIfPresent(socketPath);
     removeFileIfPresent(tokenPath);
@@ -337,7 +379,7 @@ export async function lockSession(
 }
 
 export class SessionExecutionClient implements ExecutionClient {
-  readonly mode = "eoa" as const;
+  readonly mode: SessionExecutionMode;
   private readonly socketPath: string;
   private readonly tokenPath: string;
   private readonly address: Address;
@@ -346,10 +388,12 @@ export class SessionExecutionClient implements ExecutionClient {
     socketPath: string;
     tokenPath: string;
     address: Address;
+    mode?: SessionExecutionMode;
   }) {
     this.socketPath = params.socketPath;
     this.tokenPath = params.tokenPath;
     this.address = params.address;
+    this.mode = params.mode ?? "eoa";
   }
 
   getAddress(): Address {
@@ -393,10 +437,11 @@ export class SessionExecutionClient implements ExecutionClient {
   }
 
   capabilities() {
+    const smartAccount = this.mode === "smart-account";
     return {
-      sponsoredGas: false,
+      sponsoredGas: smartAccount,
       batching: false,
-      simulation: false,
+      simulation: smartAccount,
     };
   }
 }
@@ -415,10 +460,17 @@ export async function startSessionServer(
   removeFileIfPresent(start.tokenPath);
 
   const signer = privateKeyToManagedAccount(start.privateKey);
-  const executor = hooks.executor ?? new EOAExecutor(signer, {
-    defaultChainId: start.chainId,
-    rpcUrl: start.rpcUrl,
-  });
+  const executor = hooks.executor ?? (start.gasless
+    ? createGaslessExecutionClient({
+      signer,
+      chainId: start.chainId,
+      rpcUrl: start.rpcUrl,
+      gasless: toGaslessExecutionConfig(start.gasless),
+    })
+    : new EOAExecutor(signer, {
+      defaultChainId: start.chainId,
+      rpcUrl: start.rpcUrl,
+    }));
   const expiresAt = new Date(Date.now() + start.ttlMs);
   const token = randomBytes(32).toString("hex");
   // Retain send results for the session lifetime so a retry with the same
@@ -505,6 +557,7 @@ export async function startSessionServer(
             result: {
               address: executor.getAddress(),
               expiresAt: expiresAt.toISOString(),
+              mode: executor.mode,
             },
           });
           return;
@@ -606,6 +659,7 @@ export async function startSessionServer(
   return {
     address: executor.getAddress(),
     expiresAt: expiresAt.toISOString(),
+    mode: executor.mode,
     close,
   };
 }
@@ -664,7 +718,7 @@ export async function startDetachedSessionDaemon(
     });
     child.on("message", (message: unknown) => {
       const payload = message as
-        | { type: "ready"; address: Address; expiresAt: string }
+        | { type: "ready"; address: Address; expiresAt: string; mode: SessionExecutionMode }
         | { type: "error"; error: string };
       if (payload?.type === "ready") {
         child.disconnect();
@@ -672,6 +726,7 @@ export async function startDetachedSessionDaemon(
         finish(undefined, {
           address: payload.address,
           expiresAt: payload.expiresAt,
+          mode: payload.mode,
         });
       } else if (payload?.type === "error") {
         finish(new Error(payload.error));
@@ -724,6 +779,7 @@ export async function runSessionDaemonProcess(): Promise<void> {
     type: "ready",
     address: handle.address,
     expiresAt: handle.expiresAt,
+    mode: handle.mode,
   });
   process.on("SIGTERM", () => {
     void handle.close().then(() => shutdown());
